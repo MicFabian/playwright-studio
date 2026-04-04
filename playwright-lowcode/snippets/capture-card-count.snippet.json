@@ -1,0 +1,10 @@
+{
+  "id": "capture-card-count",
+  "name": "Capture card count",
+  "description": "Reads a result card count for downstream assertions.",
+  "params": [
+    "variableName"
+  ],
+  "code": "const variableNameValue = await page\n  .getByTestId('results-count')\n  .textContent();",
+  "updatedAt": "2026-03-18T09:00:00.000Z"
+}

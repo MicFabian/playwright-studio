@@ -1,0 +1,163 @@
+{
+  "id": "checkout-totals",
+  "name": "Checkout totals",
+  "status": "stable",
+  "updatedAt": "2026-03-19T14:15:00.000Z",
+  "nodes": [
+    {
+      "id": "node-open-checkout",
+      "type": "flow",
+      "position": {
+        "x": 48,
+        "y": 144
+      },
+      "data": {
+        "kind": "navigate",
+        "category": "entry",
+        "title": "Open local page",
+        "description": "Start from a deterministic blank page.",
+        "accent": "#19c2b0",
+        "codeLabel": "page.goto()",
+        "status": "ready",
+        "fields": [
+          {
+            "key": "url",
+            "label": "URL",
+            "value": "about:blank"
+          }
+        ]
+      }
+    },
+    {
+      "id": "node-load-checkout-fixture",
+      "type": "flow",
+      "position": {
+        "x": 360,
+        "y": 144
+      },
+      "data": {
+        "kind": "snippet",
+        "category": "snippet",
+        "title": "Load checkout fixture",
+        "description": "Inject a local checkout UI so the flow can run anywhere.",
+        "accent": "#f3d27a",
+        "codeLabel": "custom snippet",
+        "status": "ready",
+        "fields": [],
+        "snippetCode": "await page.setContent(`\n<main>\n  <h1>Checkout</h1>\n  <label>Coupon <input name='coupon' /></label>\n  <button data-testid='apply-coupon'>Apply</button>\n  <p data-testid='order-total'>$100.00</p>\n</main>\n<script>\n  const input = document.querySelector('[name=\"coupon\"]');\n  const button = document.querySelector('[data-testid=\"apply-coupon\"]');\n  const total = document.querySelector('[data-testid=\"order-total\"]');\n  button.addEventListener('click', () => {\n    total.textContent = input.value === 'SPRING25' ? '$75.00' : '$100.00';\n  });\n</script>\n`);"
+      }
+    },
+    {
+      "id": "node-fill-coupon",
+      "type": "flow",
+      "position": {
+        "x": 692,
+        "y": 144
+      },
+      "data": {
+        "kind": "fill",
+        "category": "action",
+        "title": "Fill coupon",
+        "description": "Type or replace content in a field.",
+        "accent": "#f59e0b",
+        "codeLabel": "locator.fill()",
+        "status": "ready",
+        "fields": [
+          {
+            "key": "locator",
+            "label": "Locator",
+            "value": "[name=\"coupon\"]"
+          },
+          {
+            "key": "value",
+            "label": "Value",
+            "value": "SPRING25"
+          }
+        ]
+      }
+    },
+    {
+      "id": "node-apply-coupon",
+      "type": "flow",
+      "position": {
+        "x": 1012,
+        "y": 144
+      },
+      "data": {
+        "kind": "click",
+        "category": "action",
+        "title": "Apply coupon",
+        "description": "Trigger a button, link, or custom locator.",
+        "accent": "#ffc857",
+        "codeLabel": "locator.click()",
+        "status": "ready",
+        "fields": [
+          {
+            "key": "locator",
+            "label": "Locator",
+            "value": "[data-testid=\"apply-coupon\"]"
+          }
+        ]
+      }
+    },
+    {
+      "id": "node-assert-total",
+      "type": "flow",
+      "position": {
+        "x": 1332,
+        "y": 144
+      },
+      "data": {
+        "kind": "assert",
+        "category": "assertion",
+        "title": "Discounted total appears",
+        "description": "Validate text, visibility, or state.",
+        "accent": "#ff825b",
+        "codeLabel": "expect()",
+        "status": "ready",
+        "fields": [
+          {
+            "key": "target",
+            "label": "Target",
+            "value": "[data-testid=\"order-total\"]"
+          },
+          {
+            "key": "expectation",
+            "label": "Expectation",
+            "value": "$75.00"
+          }
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-checkout-1",
+      "source": "node-open-checkout",
+      "target": "node-load-checkout-fixture",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "edge-checkout-2",
+      "source": "node-load-checkout-fixture",
+      "target": "node-fill-coupon",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "edge-checkout-3",
+      "source": "node-fill-coupon",
+      "target": "node-apply-coupon",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "edge-checkout-4",
+      "source": "node-apply-coupon",
+      "target": "node-assert-total",
+      "type": "smoothstep",
+      "animated": true
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "wait-for-dashboard",
+  "name": "Wait for dashboard",
+  "description": "Reusable idle-state and dashboard-header validation.",
+  "params": [
+    "headline"
+  ],
+  "code": "await page.waitForLoadState('domcontentloaded');\nconst dashboardText = (await page.locator('[data-testid=\"dashboard-title\"]').textContent()) || '';\nif (!dashboardText.includes(headline)) {\n  throw new Error(`Dashboard headline mismatch: ${dashboardText}`);\n}",
+  "updatedAt": "2026-03-19T14:15:00.000Z"
+}

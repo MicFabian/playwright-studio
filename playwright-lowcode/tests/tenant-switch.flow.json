@@ -1,0 +1,129 @@
+{
+  "id": "tenant-switch",
+  "name": "Tenant switch",
+  "status": "stable",
+  "updatedAt": "2026-03-19T14:15:00.000Z",
+  "nodes": [
+    {
+      "id": "node-open-home",
+      "type": "flow",
+      "position": {
+        "x": 48,
+        "y": 144
+      },
+      "data": {
+        "kind": "navigate",
+        "category": "entry",
+        "title": "Open local page",
+        "description": "Start from a deterministic blank page.",
+        "accent": "#19c2b0",
+        "codeLabel": "page.goto()",
+        "status": "ready",
+        "fields": [
+          {
+            "key": "url",
+            "label": "URL",
+            "value": "about:blank"
+          }
+        ]
+      }
+    },
+    {
+      "id": "node-load-tenant-fixture",
+      "type": "flow",
+      "position": {
+        "x": 360,
+        "y": 144
+      },
+      "data": {
+        "kind": "snippet",
+        "category": "snippet",
+        "title": "Load tenant fixture",
+        "description": "Inject a local tenant switcher UI so the flow can run anywhere.",
+        "accent": "#f3d27a",
+        "codeLabel": "custom snippet",
+        "status": "ready",
+        "fields": [],
+        "snippetCode": "await page.setContent(`\n<main>\n  <button aria-haspopup='listbox'>Workspace</button>\n  <ul role='listbox' hidden>\n    <li role='option'>Acme Europe</li>\n    <li role='option'>Acme US</li>\n  </ul>\n  <p data-testid='current-tenant'>None</p>\n</main>\n<script>\n  const trigger = document.querySelector('button[aria-haspopup=\"listbox\"]');\n  const list = document.querySelector('[role=\"listbox\"]');\n  const currentTenant = document.querySelector('[data-testid=\"current-tenant\"]');\n  trigger.addEventListener('click', () => {\n    list.hidden = !list.hidden;\n  });\n  list.querySelectorAll('[role=\"option\"]').forEach((option) => {\n    option.addEventListener('click', () => {\n      currentTenant.textContent = option.textContent || '';\n      list.hidden = true;\n    });\n  });\n</script>\n`);"
+      }
+    },
+    {
+      "id": "node-switch-tenant",
+      "type": "flow",
+      "position": {
+        "x": 692,
+        "y": 144
+      },
+      "data": {
+        "kind": "snippet",
+        "category": "snippet",
+        "title": "Switch tenant",
+        "description": "Open the tenant picker and choose the current workspace.",
+        "accent": "#f3d27a",
+        "codeLabel": "custom snippet",
+        "status": "ready",
+        "snippetRef": "switch-tenant",
+        "fields": [
+          {
+            "key": "tenantName",
+            "label": "tenantName",
+            "value": "Acme Europe"
+          }
+        ],
+        "snippetCode": "await page.getByRole('button', { name: 'Workspace' }).click();\nconst option = page.getByRole('option', { name: tenantName });\nawait option.waitFor({ state: 'visible' });\nawait option.click();"
+      }
+    },
+    {
+      "id": "node-assert-tenant",
+      "type": "flow",
+      "position": {
+        "x": 1012,
+        "y": 144
+      },
+      "data": {
+        "kind": "assert",
+        "category": "assertion",
+        "title": "New tenant is visible",
+        "description": "Validate text, visibility, or state.",
+        "accent": "#ff825b",
+        "codeLabel": "expect()",
+        "status": "ready",
+        "fields": [
+          {
+            "key": "target",
+            "label": "Target",
+            "value": "[data-testid=\"current-tenant\"]"
+          },
+          {
+            "key": "expectation",
+            "label": "Expectation",
+            "value": "Acme Europe"
+          }
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-tenant-1",
+      "source": "node-open-home",
+      "target": "node-load-tenant-fixture",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "edge-tenant-2",
+      "source": "node-load-tenant-fixture",
+      "target": "node-switch-tenant",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "edge-tenant-3",
+      "source": "node-switch-tenant",
+      "target": "node-assert-tenant",
+      "type": "smoothstep",
+      "animated": true
+    }
+  ]
+}

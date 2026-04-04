@@ -1,0 +1,10 @@
+{
+  "formatVersion": 1,
+  "name": "Playwright Low-Code Studio",
+  "paths": {
+    "testsDir": "playwright-lowcode/tests",
+    "snippetsDir": "playwright-lowcode/snippets",
+    "generatedTestsDir": "tests/generated"
+  }
+}
+

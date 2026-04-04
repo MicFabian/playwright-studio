@@ -1,0 +1,10 @@
+{
+  "id": "switch-tenant",
+  "name": "Switch tenant",
+  "description": "Open the tenant picker and choose the current workspace.",
+  "params": [
+    "tenantName"
+  ],
+  "code": "await page.getByRole('button', { name: 'Workspace' }).click();\nconst option = page.getByRole('option', { name: tenantName });\nawait option.waitFor({ state: 'visible' });\nawait option.click();",
+  "updatedAt": "2026-03-19T14:15:00.000Z"
+}
