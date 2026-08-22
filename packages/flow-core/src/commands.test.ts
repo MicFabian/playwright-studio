@@ -84,6 +84,46 @@ describe('insert', () => {
   });
 });
 
+describe('immutability', () => {
+  it('never mutates the source document, even when creating a missing scope slot', () => {
+    const document = documentWithCondition();
+    const snapshot = JSON.stringify(document);
+
+    locateStep(document, 'missing');
+    isDescendant(document, 'cond', 'missing');
+
+    const next = insertStep(document, createStep('comment', 'alt'), {
+      parentId: 'cond',
+      slot: 'else',
+      index: 0,
+    });
+
+    expect(JSON.stringify(document)).toBe(snapshot);
+    expect(JSON.stringify(document)).not.toContain('"else"');
+    expect(JSON.stringify(next)).toContain('"else"');
+  });
+
+  it('does not share nested arrays between the source and the result', () => {
+    const document = documentWithCondition();
+    const next = insertStep(document, createStep('click', 'extra'), {
+      parentId: 'cond',
+      slot: 'then',
+      index: 0,
+    });
+
+    const sourceCondition = document.root.steps[1];
+    const nextCondition = next.root.steps[1];
+
+    expect(sourceCondition.kind === 'condition' && sourceCondition.then.steps).toHaveLength(1);
+    expect(nextCondition.kind === 'condition' && nextCondition.then.steps).toHaveLength(2);
+    expect(
+      sourceCondition.kind === 'condition' &&
+        nextCondition.kind === 'condition' &&
+        sourceCondition.then === nextCondition.then,
+    ).toBe(false);
+  });
+});
+
 describe('move', () => {
   it('moves a step into a scope', () => {
     const document = moveStep(documentWithCondition(), 'nav', {

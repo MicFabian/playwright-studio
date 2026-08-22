@@ -74,6 +74,42 @@ describe('locator emission', () => {
   });
 });
 
+describe('injection safety', () => {
+  const payloads = [
+    '"); process.exit(1); ("',
+    '`); require("child_process").execSync("rm -rf /"); (`',
+    '\\"); console.log("pwned',
+    '${process.env.SECRET}',
+    'line one\nline two',
+  ];
+
+  it.each(payloads)('emits %j as an inert string literal', (payload) => {
+    const { source } = compile([
+      { id: 'a', kind: 'fill', target: testId('f'), value: { source: 'literal', value: payload } },
+    ]);
+
+    const line = source.split('\n').find((candidate) => candidate.includes('.fill('));
+
+    expect(line).toBeDefined();
+
+    const argument = line!.slice(line!.indexOf('.fill(') + 6, line!.lastIndexOf(')'));
+
+    expect(JSON.parse(argument)).toBe(payload);
+  });
+
+  it('escapes payloads inside selectors too', () => {
+    const { source } = compile([
+      {
+        id: 'a',
+        kind: 'click',
+        target: { base: { by: 'css', selector: { source: 'literal', value: '"); evil(); ("' } } },
+      },
+    ]);
+
+    expect(source).toContain('page.locator("\\"); evil(); (\\"")');
+  });
+});
+
 describe('assertions', () => {
   it('emits matcher-specific assertions with negation and timeout', () => {
     const { source } = compile([
