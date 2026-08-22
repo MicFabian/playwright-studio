@@ -1,0 +1,105 @@
+:root {
+  color-scheme: light dark;
+
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-2: #f1efea;
+  --surface-3: #e8e5de;
+  --border: #ddd9d0;
+  --border-strong: #c4bfb3;
+  --text: #1b1a17;
+  --text-2: #55504a;
+  --text-3: #857f74;
+  --accent: #0f6f66;
+  --accent-text: #ffffff;
+  --danger: #b4331f;
+  --warning: #8a6410;
+  --success: #2f7a3f;
+
+  --block-entry: #0f8a7d;
+  --block-action: #b8801a;
+  --block-assertion: #c2542f;
+  --block-logic: #6b4fbb;
+  --block-code: #5f6b7a;
+  --block-annotation: #8a8478;
+
+  --rail: #201f1b;
+  --rail-text: #d9d5cc;
+  --rail-text-dim: #8d887d;
+  --rail-border: #34322c;
+
+  --radius: 6px;
+  --radius-lg: 10px;
+  --shadow-1: 0 1px 2px rgb(20 18 14 / 0.08);
+  --shadow-2: 0 4px 14px rgb(20 18 14 / 0.12);
+
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --step-1: 4px;
+  --step-2: 8px;
+  --step-3: 12px;
+  --step-4: 16px;
+  --step-5: 24px;
+  --step-6: 32px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #141310;
+    --surface: #1c1b17;
+    --surface-2: #24221d;
+    --surface-3: #2d2a24;
+    --border: #33302a;
+    --border-strong: #494539;
+    --text: #efebe2;
+    --text-2: #b5afa3;
+    --text-3: #877f73;
+    --accent: #5cc8ba;
+    --accent-text: #10201e;
+    --danger: #f08163;
+    --warning: #e0b352;
+    --success: #6fc98a;
+
+    --block-entry: #46c9ba;
+    --block-action: #e0b352;
+    --block-assertion: #f0876a;
+    --block-logic: #a68df0;
+    --block-code: #93a2b5;
+    --block-annotation: #a29a8c;
+
+    --rail: #111008;
+    --rail-text: #d3cfc5;
+    --rail-text-dim: #7d776c;
+    --rail-border: #2a2822;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #141310;
+  --surface: #1c1b17;
+  --surface-2: #24221d;
+  --surface-3: #2d2a24;
+  --border: #33302a;
+  --border-strong: #494539;
+  --text: #efebe2;
+  --text-2: #b5afa3;
+  --text-3: #877f73;
+  --accent: #5cc8ba;
+  --accent-text: #10201e;
+  --danger: #f08163;
+  --warning: #e0b352;
+  --success: #6fc98a;
+
+  --block-entry: #46c9ba;
+  --block-action: #e0b352;
+  --block-assertion: #f0876a;
+  --block-logic: #a68df0;
+  --block-code: #93a2b5;
+  --block-annotation: #a29a8c;
+
+  --rail: #111008;
+  --rail-text: #d3cfc5;
+  --rail-text-dim: #7d776c;
+  --rail-border: #2a2822;
+}

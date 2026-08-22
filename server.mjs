@@ -5,36 +5,47 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { createServer as createViteServer } from 'vite';
+import {
+  authenticate,
+  createSecurityContext,
+  handleSessionExchange,
+  launchUrl,
+  readLimitedBody,
+} from './server/security.mjs';
+import {
+  FLOW_FORMAT_VERSION,
+  compileFlow,
+  countSteps,
+  hasBlockingDiagnostics,
+  isV1Flow,
+  migrateV1Flow,
+} from './packages/flow-core/dist/index.mjs';
+import { RunManager } from './packages/studio-runner/src/run-manager.mjs';
+import { importSpecSource } from './packages/flow-import/dist/index.mjs';
 
 const execFileAsync = promisify(execFile);
-const rootDir = process.cwd();
+const installRoot = process.cwd();
+const rootDir = process.env.STUDIO_WORKSPACE_ROOT || installRoot;
 const isProd = process.argv.includes('--prod');
+const allowNetworkListen = process.argv.includes('--unsafe-network-listen');
 const port = Number(process.env.PORT || (isProd ? 4173 : 5173));
-const host = process.env.HOST || '127.0.0.1';
+const host = allowNetworkListen ? process.env.HOST || '0.0.0.0' : '127.0.0.1';
+const securityContext = createSecurityContext({ allowNetworkListen });
 
 const defaultProject = {
-  formatVersion: 1,
+  formatVersion: 2,
   name: 'Playwright Low-Code Studio',
   paths: {
     testsDir: 'playwright-lowcode/tests',
     snippetsDir: 'playwright-lowcode/snippets',
     generatedTestsDir: 'tests/generated',
   },
+  playwright: {
+    testImport: '@playwright/test',
+  },
 };
 
 const statusValues = new Set(['stable', 'draft', 'failing']);
-const blockKinds = new Set([
-  'navigate',
-  'click',
-  'fill',
-  'assert',
-  'extract',
-  'condition',
-  'loop',
-  'code',
-  'freetext',
-  'snippet',
-]);
 
 const contentTypes = {
   '.css': 'text/css; charset=utf-8',
@@ -49,7 +60,13 @@ const contentTypes = {
 };
 
 const runsRootRelative = path.join('playwright-lowcode', 'runs').replaceAll('\\', '/');
-const runsById = new Map();
+
+const runManager = new RunManager({
+  rootDir: installRoot,
+  workspaceDir: rootDir,
+  runsDir: path.join(rootDir, runsRootRelative),
+  compile: compileFlow,
+});
 
 function nowIso() {
   return new Date().toISOString();
@@ -75,23 +92,6 @@ function normalizeRunId(value) {
     .replace(/[^a-zA-Z0-9_-]/g, '');
 }
 
-function q(value) {
-  return JSON.stringify(value);
-}
-
-function safeIdentifier(candidate) {
-  const cleaned = String(candidate || '').replace(/[^a-zA-Z0-9_$]/g, '');
-
-  if (!cleaned) {
-    return 'value';
-  }
-
-  if (/^[0-9]/.test(cleaned)) {
-    return `v${cleaned}`;
-  }
-
-  return cleaned;
-}
 
 function slugify(value) {
   const slug = String(value || '')
@@ -103,787 +103,16 @@ function slugify(value) {
   return slug || 'untitled-flow';
 }
 
-function normalizePosition(position) {
-  return {
-    x: Number(position?.x ?? 0),
-    y: Number(position?.y ?? 0),
-  };
-}
-
-function sanitizeField(field, index) {
-  const fallbackKey = `field_${index + 1}`;
-
-  return {
-    key: String(field?.key || fallbackKey),
-    label: String(field?.label || field?.key || fallbackKey),
-    value: String(field?.value ?? ''),
-    ...(field?.placeholder ? { placeholder: String(field.placeholder) } : {}),
-    ...(field?.multiline ? { multiline: true } : {}),
-    ...(field?.control === 'select' ? { control: 'select' } : {}),
-    ...(Array.isArray(field?.options)
-      ? {
-          options: field.options.map((option) => ({
-            label: String(option?.label || option?.value || ''),
-            value: String(option?.value || option?.label || ''),
-          })),
-        }
-      : {}),
-  };
-}
-
-const selectorStrategyOptions = [
-  { value: 'data-testid', label: 'data-testid' },
-  { value: 'name', label: 'name' },
-  { value: 'id', label: 'id' },
-  { value: 'placeholder', label: 'placeholder' },
-  { value: 'text', label: 'text' },
-  { value: 'css', label: 'Custom selector' },
-];
-
-function createSelectField(key, label, value, options) {
-  return {
-    key,
-    label,
-    value,
-    control: 'select',
-    options,
-  };
-}
-
-function selectorValuePlaceholder(strategy, fallback) {
-  switch (strategy) {
-    case 'data-testid':
-      return 'submit-button';
-    case 'name':
-      return 'email';
-    case 'id':
-      return 'submit-login';
-    case 'placeholder':
-      return 'Email address';
-    case 'text':
-      return 'Continue';
-    case 'css':
-    default:
-      return fallback || '[data-testid="submit"]';
-  }
-}
-
-function createSelectorFields(prefix, strategy, value, fallback) {
-  return [
-    createSelectField(`${prefix}Kind`, 'Find by', strategy, selectorStrategyOptions),
-    {
-      key: `${prefix}Value`,
-      label: strategy === 'css' ? 'Selector' : 'Value',
-      value,
-      placeholder: selectorValuePlaceholder(strategy, fallback),
-    },
-  ];
-}
-
-function getFieldValue(fields, key) {
-  return fields.find((field) => field.key === key)?.value || '';
-}
-
-function parseSelector(selector) {
-  const raw = String(selector || '').trim();
-
-  if (!raw) {
-    return { kind: 'css', value: '' };
-  }
-
-  const attributeMatch = raw.match(/^\[(data-testid|name|id|placeholder)="([^"]*)"\]$/);
-
-  if (attributeMatch) {
-    return {
-      kind: attributeMatch[1],
-      value: attributeMatch[2],
-    };
-  }
-
-  const idMatch = raw.match(/^#([a-zA-Z0-9_-]+)$/);
-
-  if (idMatch) {
-    return {
-      kind: 'id',
-      value: idMatch[1],
-    };
-  }
-
-  if (raw.startsWith('text=')) {
-    return {
-      kind: 'text',
-      value: raw.slice(5),
-    };
-  }
-
-  return {
-    kind: 'css',
-    value: raw,
-  };
-}
-
-function escapeSelectorValue(value) {
-  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-function buildSelector(kind, value, fallback) {
-  const normalizedValue = String(value || '').trim();
-
-  if (!normalizedValue) {
-    return fallback;
-  }
-
-  switch (kind) {
-    case 'data-testid':
-      return `[data-testid="${escapeSelectorValue(normalizedValue)}"]`;
-    case 'name':
-      return `[name="${escapeSelectorValue(normalizedValue)}"]`;
-    case 'id':
-      return `[id="${escapeSelectorValue(normalizedValue)}"]`;
-    case 'placeholder':
-      return `[placeholder="${escapeSelectorValue(normalizedValue)}"]`;
-    case 'text':
-      return `text=${normalizedValue}`;
-    case 'css':
-    default:
-      return normalizedValue;
-  }
-}
-
-function resolveSelector(fields, prefix, fallback) {
-  const parsed = parseSelector(getFieldValue(fields, prefix) || fallback);
-  const strategy = getFieldValue(fields, `${prefix}Kind`) || parsed.kind;
-  const value = getFieldValue(fields, `${prefix}Value`) || parsed.value;
-
-  return buildSelector(strategy, value, fallback);
-}
-
-function normalizeStructuredFields(kind, fields) {
-  switch (kind) {
-    case 'click': {
-      const parsed = parseSelector(getFieldValue(fields, 'locator') || '[data-testid="submit"]');
-      const strategy = getFieldValue(fields, 'locatorKind') || parsed.kind;
-      const value = getFieldValue(fields, 'locatorValue') || parsed.value;
-      return createSelectorFields('locator', strategy, value, '[data-testid="submit"]');
-    }
-    case 'fill': {
-      const parsed = parseSelector(getFieldValue(fields, 'locator') || '[name="email"]');
-      const strategy = getFieldValue(fields, 'locatorKind') || parsed.kind;
-      const value = getFieldValue(fields, 'locatorValue') || parsed.value;
-      return [
-        ...createSelectorFields('locator', strategy, value, '[name="email"]'),
-        {
-          key: 'value',
-          label: 'Text to fill',
-          value: getFieldValue(fields, 'value') || 'qa@example.com',
-          placeholder: 'Value or variable',
-        },
-      ];
-    }
-    case 'assert': {
-      const parsed = parseSelector(
-        getFieldValue(fields, 'target') || '[data-testid="dashboard-title"]',
-      );
-      const strategy = getFieldValue(fields, 'targetKind') || parsed.kind;
-      const value = getFieldValue(fields, 'targetValue') || parsed.value;
-      return [
-        ...createSelectorFields(
-          'target',
-          strategy,
-          value,
-          '[data-testid="dashboard-title"]',
-        ),
-        {
-          key: 'expectation',
-          label: 'Expected text',
-          value: getFieldValue(fields, 'expectation') || 'Dashboard',
-          placeholder: 'Expected text or condition',
-        },
-      ];
-    }
-    case 'extract': {
-      const parsed = parseSelector(
-        getFieldValue(fields, 'locator') || '[data-testid="order-count"]',
-      );
-      const strategy = getFieldValue(fields, 'locatorKind') || parsed.kind;
-      const value = getFieldValue(fields, 'locatorValue') || parsed.value;
-      return [
-        ...createSelectorFields(
-          'locator',
-          strategy,
-          value,
-          '[data-testid="order-count"]',
-        ),
-        {
-          key: 'variable',
-          label: 'Variable',
-          value: getFieldValue(fields, 'variable') || 'orderCount',
-          placeholder: 'camelCase variable',
-        },
-      ];
-    }
-    case 'condition': {
-      const parsed = parseSelector(
-        getFieldValue(fields, 'guard') || '[data-testid="toast-error"]',
-      );
-      const strategy = getFieldValue(fields, 'guardKind') || parsed.kind;
-      const value = getFieldValue(fields, 'guardValue') || parsed.value;
-      return createSelectorFields('guard', strategy, value, '[data-testid="toast-error"]');
-    }
-    case 'freetext':
-      return [
-        {
-          key: 'code',
-          label: 'Code',
-          value:
-            getFieldValue(fields, 'code') ||
-            getFieldValue(fields, 'content') ||
-            "await page.waitForLoadState('networkidle');",
-          placeholder: "await page.locator('[data-testid=\"target\"]').click();",
-          multiline: true,
-        },
-      ];
-    default:
-      return fields;
-  }
-}
-
-function sanitizeNodeData(data) {
-  const kind = blockKinds.has(data?.kind) ? data.kind : 'snippet';
-  const status = data?.status === 'ready' ? 'ready' : 'draft';
-  const sanitizedFields = Array.isArray(data?.fields)
-    ? data.fields.map((field, index) => sanitizeField(field, index))
-    : [];
-
-  return {
-    kind,
-    category: String(data?.category || 'snippet'),
-    title: String(data?.title || 'Untitled block'),
-    description: String(data?.description || ''),
-    accent: String(data?.accent || '#19c2b0'),
-    codeLabel: String(data?.codeLabel || 'custom block'),
-    status,
-    fields: normalizeStructuredFields(kind, sanitizedFields),
-    ...(typeof data?.snippetCode === 'string'
-      ? { snippetCode: data.snippetCode }
-      : {}),
-    ...(typeof data?.snippetRef === 'string'
-      ? { snippetRef: data.snippetRef }
-      : {}),
-  };
-}
-
-function sanitizeNode(node) {
-  return {
-    id: String(node?.id || randomUUID()),
-    type: 'flow',
-    position: normalizePosition(node?.position),
-    data: sanitizeNodeData(node?.data),
-  };
-}
-
-function sanitizeEdge(edge) {
-  return {
-    id: String(edge?.id || randomUUID()),
-    source: String(edge?.source || ''),
-    target: String(edge?.target || ''),
-    type: 'smoothstep',
-    animated: Boolean(edge?.animated ?? true),
-  };
-}
-
-function sortNodesByPosition(left, right) {
-  if (left.position.x === right.position.x) {
-    return left.position.y - right.position.y;
-  }
-
-  return left.position.x - right.position.x;
-}
-
-function orderNodes(nodes, edges) {
-  const incoming = new Map();
-  const outgoing = new Map();
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-
-  nodes.forEach((node) => incoming.set(node.id, 0));
-
-  edges.forEach((edge) => {
-    incoming.set(edge.target, (incoming.get(edge.target) ?? 0) + 1);
-    const connected = outgoing.get(edge.source) ?? [];
-    connected.push(edge);
-    outgoing.set(edge.source, connected);
-  });
-
-  outgoing.forEach((connected) => {
-    connected.sort((left, right) => {
-      const leftNode = byId.get(left.target);
-      const rightNode = byId.get(right.target);
-
-      if (!leftNode || !rightNode) {
-        return 0;
-      }
-
-      return sortNodesByPosition(leftNode, rightNode);
-    });
-  });
-
-  const roots = [...nodes]
-    .filter((node) => (incoming.get(node.id) ?? 0) === 0)
-    .sort(sortNodesByPosition);
-
-  const ordered = [];
-  const visited = new Set();
-
-  const visit = (nodeId) => {
-    if (visited.has(nodeId)) {
-      return;
-    }
-
-    const node = byId.get(nodeId);
-
-    if (!node) {
-      return;
-    }
-
-    visited.add(nodeId);
-    ordered.push(node);
-    (outgoing.get(nodeId) ?? []).forEach((edge) => visit(edge.target));
-  };
-
-  roots.forEach((node) => visit(node.id));
-  [...nodes].sort(sortNodesByPosition).forEach((node) => visit(node.id));
-
-  return ordered;
-}
-
-function renderNode(node) {
-  const fields = Object.fromEntries(
-    (node.data.fields || []).map((field) => [field.key, field.value]),
-  );
-  const renderRawCode = (content, fallback) => {
-    const normalized = String(content || '').trimEnd();
-    return normalized ? normalized.split('\n').map((line) => line.trimEnd()) : [fallback];
-  };
-  const locator = resolveSelector(fields, 'locator', '[data-testid="submit"]');
-  const target = resolveSelector(fields, 'target', '[data-testid="target"]');
-  const guard = resolveSelector(fields, 'guard', '[data-testid="guard"]');
-
-  switch (node.data.kind) {
-    case 'navigate':
-      return [`await page.goto(${q(fields.url || 'https://example.com')});`];
-    case 'click':
-      return [`await page.locator(${q(locator)}).click();`];
-    case 'fill':
-      return [`await page.locator(${q(locator)}).fill(${q(fields.value || '')});`];
-    case 'assert':
-      return [`await expect(page.locator(${q(target)})).toContainText(${q(fields.expectation || 'Expected text')});`];
-    case 'extract':
-      return [
-        `const ${safeIdentifier(fields.variable || 'value')} = await page.locator(${q(
-          locator,
-        )}).textContent();`,
-      ];
-    case 'code':
-      return renderRawCode(fields.code, '// Custom code');
-    case 'condition':
-      return [
-        `if (await page.locator(${q(guard)}).isVisible()) {`,
-        '  // Attach branch blocks to this condition in the flow editor.',
-        '}',
-      ];
-    case 'freetext':
-      return renderRawCode(fields.code, '// Custom code');
-    case 'loop':
-      return [
-        `for (const ${safeIdentifier(fields.alias || 'item')} of ${
-          fields.collection || 'items'
-        }) {`,
-        '  // Attach repeatable blocks or snippets inside this loop.',
-        '}',
-      ];
-    case 'snippet': {
-      const parameterLines = (node.data.fields || []).map((field) => {
-        return `const ${safeIdentifier(field.key)} = ${q(field.value || field.key)};`;
-      });
-      const snippetLines = String(node.data.snippetCode || '// add snippet code')
-        .split('\n')
-        .map((line) => line.trimEnd());
-
-      return [`// Snippet: ${node.data.title}`, ...parameterLines, ...snippetLines];
-    }
-    default:
-      return ['// Unsupported block'];
-  }
-}
-
-function generatePlaywrightSpec(title, nodes, edges) {
-  const flowLines = orderNodes(nodes, edges).flatMap((node) =>
-    renderNode(node).map((line) => `  ${line}`),
-  );
-
-  return [
-    "import { expect, test } from '@playwright/test';",
-    '',
-    `test(${q(title)}, async ({ page }) => {`,
-    ...flowLines,
-    '});',
-    '',
-  ].join('\n');
-}
-
-function mapNodeFields(node) {
-  return Object.fromEntries(
-    (node.data.fields || []).map((field) => [field.key, field.value]),
-  );
-}
-
-function resolveTemplate(value, variables) {
-  return String(value ?? '').replace(/\{\{\s*([a-zA-Z0-9_$]+)\s*\}\}/g, (_, key) => {
-    const resolved = variables[key];
-    return resolved == null ? '' : String(resolved);
-  });
-}
-
-async function executeCustomCode(source, page, variables) {
-  const code = String(source || '').trim();
-
-  if (!code) {
-    return;
-  }
-
-  let expect;
-
-  try {
-    ({ expect } = await import('@playwright/test'));
-  } catch {
-    expect = undefined;
-  }
-
-  const variablePrelude = Object.keys(variables)
-    .map((key) => `const ${safeIdentifier(key)} = vars[${q(key)}];`)
-    .join('\n');
-  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const runCode = new AsyncFunction(
-    'page',
-    'vars',
-    'expect',
-    variablePrelude ? `${variablePrelude}\n${code}` : code,
-  );
-
-  await runCode(page, variables, expect);
-}
-
-async function executeNodeStep(node, page, variables) {
-  const fields = mapNodeFields(node);
-  const locator = resolveTemplate(
-    resolveSelector(fields, 'locator', '[data-testid="submit"]'),
-    variables,
-  );
-  const target = resolveTemplate(
-    resolveSelector(fields, 'target', '[data-testid="target"]'),
-    variables,
-  );
-  const guard = resolveTemplate(
-    resolveSelector(fields, 'guard', '[data-testid="guard"]'),
-    variables,
-  );
-
-  switch (node.data.kind) {
-    case 'navigate': {
-      const url = resolveTemplate(fields.url || 'https://example.com', variables);
-      await page.goto(url);
-      return;
-    }
-    case 'click': {
-      await page.locator(locator).click();
-      return;
-    }
-    case 'fill': {
-      const value = resolveTemplate(fields.value || '', variables);
-      await page.locator(locator).fill(value);
-      return;
-    }
-    case 'assert': {
-      const expectedText = resolveTemplate(
-        fields.expectation || 'Expected text',
-        variables,
-      );
-      const actualText = String((await page.locator(locator).textContent()) || '');
-
-      if (!actualText.includes(expectedText)) {
-        throw new Error(
-          `Assertion failed for ${locator}. Expected to include "${expectedText}", got "${actualText}".`,
-        );
-      }
-
-      return;
-    }
-    case 'extract': {
-      const variable = safeIdentifier(fields.variable || 'value');
-      variables[variable] = (await page.locator(locator).textContent()) || '';
-      return;
-    }
-    case 'code':
-      await executeCustomCode(fields.code, page, variables);
-      return;
-    case 'condition': {
-      variables.lastCondition = await page.locator(guard).isVisible();
-      return;
-    }
-    case 'freetext':
-      await executeCustomCode(fields.code, page, variables);
-      return;
-    case 'loop': {
-      const alias = safeIdentifier(fields.alias || 'item');
-      const collectionKey = String(fields.collection || 'items');
-      const collection = variables[collectionKey];
-
-      if (Array.isArray(collection) && collection.length > 0) {
-        variables[alias] = collection[0];
-      }
-
-      return;
-    }
-    case 'snippet': {
-      const snippetCode = String(node.data.snippetCode || '').trim();
-
-      if (!snippetCode) {
-        return;
-      }
-
-      let expect;
-
-      try {
-        ({ expect } = await import('@playwright/test'));
-      } catch {
-        expect = undefined;
-      }
-
-      const snippetParams = Object.fromEntries(
-        (node.data.fields || []).map((field) => [
-          field.key,
-          resolveTemplate(field.value || field.key, variables),
-        ]),
-      );
-      const snippetParamPrelude = Object.keys(snippetParams)
-        .map((key) => {
-          const alias = safeIdentifier(key);
-          return `const ${alias} = params[${q(key)}];`;
-        })
-        .join('\n');
-      const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-      const runSnippet = new AsyncFunction(
-        'page',
-        'vars',
-        'params',
-        'expect',
-        snippetParamPrelude ? `${snippetParamPrelude}\n${snippetCode}` : snippetCode,
-      );
-
-      await runSnippet(page, variables, snippetParams, expect);
-      return;
-    }
-    default:
-      return;
-  }
-}
-
-function serializeRun(run) {
-  return {
-    id: run.id,
-    testId: run.testId,
-    testName: run.testName,
-    status: run.status,
-    liveMode: run.liveMode,
-    slowMoMs: run.slowMoMs,
-    startedAt: run.startedAt,
-    finishedAt: run.finishedAt,
-    currentStepIndex: run.currentStepIndex,
-    totalSteps: run.totalSteps,
-    error: run.error,
-    stepResults: run.stepResults.map((step) => ({
-      index: step.index,
-      nodeId: step.nodeId,
-      title: step.title,
-      kind: step.kind,
-      status: step.status,
-      startedAt: step.startedAt,
-      finishedAt: step.finishedAt,
-      error: step.error,
-      screenshotUrl: step.screenshotName
-        ? `/api/runs/${run.id}/screenshots/${encodeURIComponent(step.screenshotName)}`
-        : null,
-    })),
-  };
-}
-
-async function executeRun(run) {
-  let browser = null;
-  let context = null;
-  let page = null;
-
-  run.status = 'running';
-  run.startedAt = nowIso();
-  run.error = null;
-
-  await fs.mkdir(run.artifactsDirAbsolute, { recursive: true });
-
-  try {
-    let chromium;
-
-    try {
-      ({ chromium } = await import('playwright'));
-    } catch {
-      throw new Error(
-        'Playwright runtime is not installed. Run `npm install playwright` and `npx playwright install chromium`.',
-      );
-    }
-
-    browser = await chromium.launch({
-      headless: !run.liveMode,
-      slowMo: run.slowMoMs,
-    });
-    context = await browser.newContext({
-      viewport: { width: 1440, height: 900 },
-    });
-    page = await context.newPage();
-
-    const variables = {};
-
-    for (const [index, node] of run.orderedNodes.entries()) {
-      const step = run.stepResults[index];
-      run.currentStepIndex = index;
-      step.status = 'running';
-      step.startedAt = nowIso();
-
-      try {
-        await executeNodeStep(node, page, variables);
-        step.status = 'passed';
-      } catch (error) {
-        step.status = 'failed';
-        step.error = getRunErrorMessage(error);
-        run.status = 'failed';
-        run.error = step.error;
-      } finally {
-        step.finishedAt = nowIso();
-
-        if (page) {
-          const screenshotName = `${String(index + 1).padStart(2, '0')}-${slugify(
-            node.data.title,
-          )}.png`;
-
-          try {
-            await page.screenshot({
-              path: path.join(run.artifactsDirAbsolute, screenshotName),
-              fullPage: true,
-            });
-            step.screenshotName = screenshotName;
-          } catch {
-            step.screenshotName = null;
-          }
-        }
-      }
-
-      if (run.status === 'failed') {
-        break;
-      }
-    }
-
-    if (run.status !== 'failed') {
-      run.status = 'passed';
-    }
-  } catch (error) {
-    run.status = 'failed';
-    run.error = getRunErrorMessage(error);
-  } finally {
-    run.currentStepIndex = null;
-    run.finishedAt = nowIso();
-
-    try {
-      await context?.close();
-    } catch {
-      // noop
-    }
-
-    try {
-      await browser?.close();
-    } catch {
-      // noop
-    }
-  }
-}
-
-async function startTestRun(project, payload) {
-  const requestedId = slugify(payload?.testId || '');
-  const liveMode = payload?.liveMode !== false;
-  const slowMoMs = Number.isFinite(Number(payload?.slowMoMs))
-    ? Math.max(0, Number(payload.slowMoMs))
-    : liveMode
-      ? 180
-      : 0;
-  let runNodes = [];
-  let runEdges = [];
-  let runTestId = requestedId;
-  let runTestName = String(payload?.testName || 'Untitled flow');
-
-  if (Array.isArray(payload?.nodes) && Array.isArray(payload?.edges) && requestedId) {
-    runNodes = payload.nodes.map(sanitizeNode);
-    runEdges = payload.edges
-      .map(sanitizeEdge)
-      .filter((edge) => edge.source && edge.target);
-  } else {
-    const tests = await loadTests(project);
-    const selectedTest = tests.find((test) => test.id === requestedId);
-
-    if (!selectedTest) {
-      throw new Error(`Flow "${requestedId}" does not exist.`);
-    }
-
-    runNodes = selectedTest.nodes;
-    runEdges = selectedTest.edges;
-    runTestId = selectedTest.id;
-    runTestName = selectedTest.name;
-  }
-
-  const orderedNodes = orderNodes(runNodes, runEdges);
-  const runId = normalizeRunId(randomUUID());
-  const run = {
-    id: runId,
-    testId: runTestId,
-    testName: runTestName,
-    status: 'queued',
-    liveMode,
-    slowMoMs,
-    startedAt: null,
-    finishedAt: null,
-    currentStepIndex: null,
-    totalSteps: orderedNodes.length,
-    error: null,
-    orderedNodes,
-    artifactsDirRelative: path.join(runsRootRelative, runId).replaceAll('\\', '/'),
-    artifactsDirAbsolute: path.join(rootDir, runsRootRelative, runId),
-    stepResults: orderedNodes.map((node, index) => ({
-      index,
-      nodeId: node.id,
-      title: node.data.title,
-      kind: node.data.kind,
-      status: 'queued',
-      startedAt: null,
-      finishedAt: null,
-      error: null,
-      screenshotName: null,
-    })),
-  };
-
-  runsById.set(runId, run);
-  void executeRun(run);
-
-  return serializeRun(run);
-}
 
 async function readJson(filePath) {
   const raw = await fs.readFile(filePath, 'utf8');
   return JSON.parse(raw);
+}
+
+async function writeFileAtomic(filePath, contents) {
+  const temporaryPath = `${filePath}.tmp-${process.pid}`;
+  await fs.writeFile(temporaryPath, contents);
+  await fs.rename(temporaryPath, filePath);
 }
 
 async function ensureWorkspaceLayout(project) {
@@ -911,6 +140,11 @@ async function readProject() {
           parsed.paths?.generatedTestsDir || defaultProject.paths.generatedTestsDir,
         ),
       },
+      playwright: {
+        testImport: String(
+          parsed.playwright?.testImport || defaultProject.playwright.testImport,
+        ),
+      },
     };
   } catch {
     return defaultProject;
@@ -918,21 +152,32 @@ async function readProject() {
 }
 
 function materializeTest(project, relativePath, raw) {
-  const id = slugify(raw.id || raw.name || path.basename(relativePath, '.flow.json'));
-  const specPath = path.join(project.paths.generatedTestsDir, `${id}.spec.ts`).replaceAll('\\', '/');
+  const fallbackId = path.basename(relativePath, '.flow.json');
+  const document = isV1Flow(raw)
+    ? migrateV1Flow(raw, fallbackId).document
+    : {
+        ...raw,
+        formatVersion: FLOW_FORMAT_VERSION,
+        id: slugify(raw.id || raw.name || fallbackId),
+        name: String(raw.name || 'Untitled flow'),
+        status: statusValues.has(raw.status) ? raw.status : 'draft',
+        root: raw.root ?? { steps: [] },
+        layout: raw.layout ?? { positions: {} },
+      };
+
+  const specPath = path
+    .join(project.paths.generatedTestsDir, `${document.id}.spec.ts`)
+    .replaceAll('\\', '/');
 
   return {
-    id,
-    name: String(raw.name || 'Untitled flow'),
-    status: statusValues.has(raw.status) ? raw.status : 'draft',
-    steps: Array.isArray(raw.nodes) ? raw.nodes.length : 0,
-    updatedAt: String(raw.updatedAt || ''),
+    id: document.id,
+    name: document.name,
+    status: document.status,
+    steps: countSteps(document.root),
+    updatedAt: String(document.updatedAt || ''),
     filePath: relativePath.replaceAll('\\', '/'),
     specPath,
-    nodes: Array.isArray(raw.nodes) ? raw.nodes.map(sanitizeNode) : [],
-    edges: Array.isArray(raw.edges)
-      ? raw.edges.map(sanitizeEdge).filter((edge) => edge.source && edge.target)
-      : [],
+    document,
   };
 }
 
@@ -1083,38 +328,39 @@ async function persistTest(project, payload, fallbackId) {
   const id = slugify(payload.id || payload.name || fallbackId || 'untitled-flow');
   const filePath = path.join(project.paths.testsDir, `${id}.flow.json`).replaceAll('\\', '/');
   const specPath = path.join(project.paths.generatedTestsDir, `${id}.spec.ts`).replaceAll('\\', '/');
-  const test = materializeTest(project, filePath, {
-    id,
-    name: payload.name,
-    status: payload.status,
-    updatedAt: new Date().toISOString(),
-    nodes: payload.nodes,
-    edges: payload.edges,
-  });
 
-  await fs.writeFile(
+  const document = {
+    formatVersion: FLOW_FORMAT_VERSION,
+    id,
+    name: String(payload.name || 'Untitled flow'),
+    status: statusValues.has(payload.status) ? payload.status : 'draft',
+    updatedAt: new Date().toISOString(),
+    root: payload.document?.root ?? payload.root ?? { steps: [] },
+    layout: payload.document?.layout ?? payload.layout ?? { positions: {} },
+    ...(payload.document?.testOptions ? { testOptions: payload.document.testOptions } : {}),
+  };
+
+  const compiled = compileFlow(document, { testImport: project.playwright.testImport });
+
+  await writeFileAtomic(
     path.join(rootDir, filePath),
-    `${JSON.stringify(
-      {
-        id: test.id,
-        name: test.name,
-        status: test.status,
-        updatedAt: test.updatedAt,
-        nodes: test.nodes,
-        edges: test.edges,
-      },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify(document, null, 2)}\n`,
   );
-  await fs.writeFile(
-    path.join(rootDir, specPath),
-    generatePlaywrightSpec(test.name, test.nodes, test.edges),
-  );
+
+  if (!hasBlockingDiagnostics(compiled)) {
+    await writeFileAtomic(path.join(rootDir, specPath), compiled.source);
+  }
 
   return {
-    ...test,
+    id: document.id,
+    name: document.name,
+    status: document.status,
+    steps: countSteps(document.root),
+    updatedAt: document.updatedAt,
+    filePath,
     specPath,
+    document,
+    diagnostics: compiled.diagnostics,
   };
 }
 
@@ -1240,17 +486,7 @@ async function commitGitWorkspace(message) {
 }
 
 async function parseBody(request) {
-  const chunks = [];
-
-  for await (const chunk of request) {
-    chunks.push(chunk);
-  }
-
-  if (chunks.length === 0) {
-    return {};
-  }
-
-  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  const raw = (await readLimitedBody(request)).trim();
 
   if (!raw) {
     return {};
@@ -1301,8 +537,54 @@ function getRunErrorMessage(error) {
   return firstLine ? firstLine.trim() : 'Run failed.';
 }
 
+const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
 async function handleApi(request, response) {
   const url = new URL(request.url || '/', 'http://localhost');
+
+  try {
+    if (request.method === 'POST' && url.pathname === '/api/session') {
+      handleSessionExchange(securityContext, request, response, url);
+      return;
+    }
+
+    if (
+      request.method === 'GET' &&
+      url.pathname === '/api/launch-token' &&
+      process.env.STUDIO_E2E === '1'
+    ) {
+      sendJson(response, 200, { token: securityContext.launchToken });
+      return;
+    }
+
+    if (
+      request.method === 'POST' &&
+      url.pathname === '/api/test-reset' &&
+      process.env.STUDIO_E2E === '1' &&
+      process.env.STUDIO_SEED_ROOT
+    ) {
+      const seedTests = path.join(process.env.STUDIO_SEED_ROOT, 'playwright-lowcode', 'tests');
+      const liveTests = path.join(rootDir, 'playwright-lowcode', 'tests');
+
+      await fs.rm(liveTests, { recursive: true, force: true });
+      await fs.mkdir(liveTests, { recursive: true });
+
+      for (const file of await fs.readdir(seedTests)) {
+        await fs.copyFile(path.join(seedTests, file), path.join(liveTests, file));
+      }
+
+      sendJson(response, 200, { reset: true });
+      return;
+    }
+
+    authenticate(securityContext, request, {
+      mutating: mutatingMethods.has(request.method),
+    });
+  } catch (error) {
+    sendError(response, getHttpStatus(error), getErrorMessage(error));
+    return;
+  }
+
   const project = await readProject();
   await ensureWorkspaceLayout(project);
 
@@ -1314,46 +596,175 @@ async function handleApi(request, response) {
 
     if (request.method === 'POST' && url.pathname === '/api/runs') {
       const body = await parseBody(request);
-      const run = await startTestRun(project, body);
+
+      if (Array.isArray(body?.nodes) || Array.isArray(body?.edges)) {
+        throw createHttpError(
+          400,
+          'Runs execute persisted flows only. Save the flow, then run it by id.',
+        );
+      }
+
+      const requestedId = slugify(body?.testId || '');
+      const tests = await loadTests(project);
+      const selected = tests.find((test) => test.id === requestedId);
+
+      if (!selected) {
+        throw createHttpError(404, `Flow "${requestedId}" does not exist.`);
+      }
+
+      const run = await runManager.start({
+        testId: selected.id,
+        testName: selected.name,
+        liveMode: body?.liveMode === true,
+        document: selected.document,
+      });
+
       sendJson(response, 201, { run });
       return;
     }
 
     const runMatch = url.pathname.match(/^\/api\/runs\/([^/]+)$/);
-    const runScreenshotMatch = url.pathname.match(
-      /^\/api\/runs\/([^/]+)\/screenshots\/([^/]+)$/,
-    );
+    const runEventsMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/events$/);
+    const runCancelMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/cancel$/);
+    const runArtifactMatch = url.pathname.match(/^\/api\/runs\/([^/]+)\/artifacts\/(.+)$/);
+
+    if (request.method === 'GET' && url.pathname === '/api/runs') {
+      sendJson(response, 200, { runs: await runManager.listRuns() });
+      return;
+    }
 
     if (request.method === 'GET' && runMatch) {
       const runId = normalizeRunId(runMatch[1]);
-      const run = runsById.get(runId);
+      const run = await runManager.readManifest(runId);
 
       if (!run) {
         throw createHttpError(404, `Run "${runId}" was not found.`);
       }
 
-      sendJson(response, 200, { run: serializeRun(run) });
+      sendJson(response, 200, { run });
       return;
     }
 
-    if (request.method === 'GET' && runScreenshotMatch) {
-      const runId = normalizeRunId(runScreenshotMatch[1]);
-      const fileName = path.basename(decodeURIComponent(runScreenshotMatch[2]));
-      const screenshotPath = path.join(rootDir, runsRootRelative, runId, fileName);
+    if (request.method === 'GET' && runEventsMatch) {
+      const runId = normalizeRunId(runEventsMatch[1]);
+      const lastEventId = Number(request.headers['last-event-id'] || 0);
+
+      response.statusCode = 200;
+      response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      response.setHeader('Cache-Control', 'no-cache');
+      response.setHeader('Connection', 'keep-alive');
+      response.flushHeaders?.();
+
+      const send = (event) => {
+        response.write(`id: ${event.seq}\n`);
+        response.write(`data: ${JSON.stringify(event)}\n\n`);
+      };
+
+      (await runManager.readEvents(runId, lastEventId)).forEach(send);
+
+      const onEvent = (eventRunId, event) => {
+        if (eventRunId === runId) {
+          send(event);
+        }
+      };
+
+      runManager.on('event', onEvent);
+
+      const heartbeat = setInterval(() => response.write(': ping\n\n'), 15000);
+
+      request.on('close', () => {
+        clearInterval(heartbeat);
+        runManager.off('event', onEvent);
+      });
+
+      return;
+    }
+
+    if (request.method === 'POST' && runCancelMatch) {
+      const runId = normalizeRunId(runCancelMatch[1]);
+      const cancelled = await runManager.cancel(runId);
+      sendJson(response, cancelled ? 200 : 409, { cancelled });
+      return;
+    }
+
+    if (request.method === 'GET' && runArtifactMatch) {
+      const runId = normalizeRunId(runArtifactMatch[1]);
+      const requested = decodeURIComponent(runArtifactMatch[2]);
+      const artifactsRoot = path.join(runManager.runDirectory(runId), 'artifacts');
+      const artifactPath = path.resolve(artifactsRoot, requested);
+
+      if (!artifactPath.startsWith(path.resolve(artifactsRoot) + path.sep)) {
+        throw createHttpError(403, 'Artifact path escapes the run directory.');
+      }
 
       try {
-        const screenshot = await fs.readFile(screenshotPath);
+        const artifact = await fs.readFile(artifactPath);
         response.statusCode = 200;
         response.setHeader(
           'Content-Type',
-          contentTypes[path.extname(screenshotPath)] || 'application/octet-stream',
+          contentTypes[path.extname(artifactPath)] || 'application/octet-stream',
         );
         response.setHeader('Cache-Control', 'no-store');
-        response.end(screenshot);
+        response.end(artifact);
       } catch {
-        throw createHttpError(404, 'Screenshot not found');
+        throw createHttpError(404, 'Artifact not found');
       }
 
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/import/preview') {
+      const body = await parseBody(request);
+      const source = String(body?.source || '');
+
+      if (!source.trim()) {
+        throw createHttpError(400, 'Paste or upload a spec file to import.');
+      }
+
+      const result = importSpecSource(source, String(body?.fileName || 'imported.spec.ts'));
+
+      sendJson(response, 200, {
+        scaffold: result.scaffold,
+        diagnostics: result.diagnostics,
+        tests: result.tests.map((test) => ({
+          name: test.document.name,
+          fidelity: test.fidelity,
+          structuredSteps: test.structuredSteps,
+          opaqueSteps: test.opaqueSteps,
+          diagnostics: test.diagnostics,
+          document: test.document,
+          preview: compileFlow(test.document).source,
+        })),
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/import/adopt') {
+      const body = await parseBody(request);
+      const documents = Array.isArray(body?.documents) ? body.documents : [];
+
+      if (documents.length === 0) {
+        throw createHttpError(400, 'Select at least one imported test to adopt.');
+      }
+
+      const created = [];
+
+      for (const document of documents) {
+        created.push(
+          await persistTest(
+            project,
+            {
+              id: document.id,
+              name: document.name,
+              status: 'draft',
+              document,
+            },
+            document.id,
+          ),
+        );
+      }
+
+      sendJson(response, 201, { tests: created, git: await getGitStatus() });
       return;
     }
 
@@ -1438,7 +849,7 @@ async function handleApi(request, response) {
 async function serveStatic(request, response) {
   const url = new URL(request.url || '/', 'http://localhost');
   const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
-  const distPath = path.join(rootDir, 'dist', pathname);
+  const distPath = path.join(installRoot, 'dist', pathname);
 
   try {
     const file = await fs.readFile(distPath);
@@ -1449,7 +860,7 @@ async function serveStatic(request, response) {
     );
     response.end(file);
   } catch {
-    const html = await fs.readFile(path.join(rootDir, 'dist', 'index.html'));
+    const html = await fs.readFile(path.join(installRoot, 'dist', 'index.html'));
     response.statusCode = 200;
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.end(html);
@@ -1457,6 +868,10 @@ async function serveStatic(request, response) {
 }
 
 async function start() {
+  await fs.mkdir(path.join(rootDir, runsRootRelative), { recursive: true });
+  await runManager.reconcile();
+  void runManager.collectGarbage();
+
   if (isProd) {
     const server = http.createServer(async (request, response) => {
       try {
@@ -1472,7 +887,17 @@ async function start() {
     });
 
     server.listen(port, host, () => {
-      console.log(`Playwright Low-Code Studio listening on http://${host}:${port}`);
+      if (allowNetworkListen) {
+        console.warn(
+          '\\n  WARNING: --unsafe-network-listen exposes this Studio beyond loopback.\\n' +
+            '  Anyone who can reach this port and obtain the launch token can execute\\n' +
+            '  repository code on this machine. Do not use on untrusted networks.\\n',
+        );
+      }
+
+      console.log(
+        `Playwright Low-Code Studio listening on ${launchUrl(securityContext, host, port)}`,
+      );
     });
 
     return;
@@ -1501,7 +926,7 @@ async function start() {
         !url.pathname.startsWith('/@');
 
       if (isPageRequest) {
-        const template = await fs.readFile(path.join(rootDir, 'index.html'), 'utf8');
+        const template = await fs.readFile(path.join(installRoot, 'index.html'), 'utf8');
         const html = await vite.transformIndexHtml(url.pathname, template);
         response.statusCode = 200;
         response.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -1520,7 +945,17 @@ async function start() {
   });
 
   server.listen(port, host, () => {
-    console.log(`Playwright Low-Code Studio listening on http://${host}:${port}`);
+    if (allowNetworkListen) {
+      console.warn(
+        '\\n  WARNING: --unsafe-network-listen exposes this Studio beyond loopback.\\n' +
+          '  Anyone who can reach this port and obtain the launch token can execute\\n' +
+          '  repository code on this machine. Do not use on untrusted networks.\\n',
+      );
+    }
+
+    console.log(
+      `Playwright Low-Code Studio listening on ${launchUrl(securityContext, host, port)}`,
+    );
   });
 }
 

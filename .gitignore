@@ -13,3 +13,5 @@ coverage/
 playwright-lowcode/runs/
 .playwright-mcp/
 insertion-*.png
+packages/*/dist/
+.studio-runs/

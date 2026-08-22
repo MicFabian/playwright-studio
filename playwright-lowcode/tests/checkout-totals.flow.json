@@ -1,163 +1,103 @@
 {
+  "formatVersion": 2,
   "id": "checkout-totals",
   "name": "Checkout totals",
   "status": "stable",
-  "updatedAt": "2026-03-19T14:15:00.000Z",
-  "nodes": [
-    {
-      "id": "node-open-checkout",
-      "type": "flow",
-      "position": {
+  "updatedAt": "2026-08-22T18:53:00.262Z",
+  "root": {
+    "steps": [
+      {
+        "id": "node-open-checkout",
+        "label": "Open local page",
+        "kind": "navigate",
+        "url": {
+          "source": "literal",
+          "value": "about:blank"
+        }
+      },
+      {
+        "id": "node-load-checkout-fixture",
+        "label": "Load checkout fixture",
+        "kind": "code",
+        "code": "await page.setContent(`\n<main>\n  <h1>Checkout</h1>\n  <label>Coupon <input name='coupon' /></label>\n  <button data-testid='apply-coupon'>Apply</button>\n  <p data-testid='order-total'>$100.00</p>\n</main>\n<script>\n  const input = document.querySelector('[name=\"coupon\"]');\n  const button = document.querySelector('[data-testid=\"apply-coupon\"]');\n  const total = document.querySelector('[data-testid=\"order-total\"]');\n  button.addEventListener('click', () => {\n    total.textContent = input.value === 'SPRING25' ? '$75.00' : '$100.00';\n  });\n</script>\n`);"
+      },
+      {
+        "id": "node-fill-coupon",
+        "label": "Fill coupon",
+        "kind": "fill",
+        "target": {
+          "base": {
+            "by": "css",
+            "selector": {
+              "source": "literal",
+              "value": "[name=\"coupon\"]"
+            }
+          }
+        },
+        "value": {
+          "source": "literal",
+          "value": "SPRING25"
+        }
+      },
+      {
+        "id": "node-apply-coupon",
+        "label": "Apply coupon",
+        "kind": "click",
+        "target": {
+          "base": {
+            "by": "testId",
+            "value": {
+              "source": "literal",
+              "value": "apply-coupon"
+            }
+          }
+        }
+      },
+      {
+        "id": "node-assert-total",
+        "label": "Discounted total appears",
+        "kind": "assert",
+        "target": {
+          "base": {
+            "by": "testId",
+            "value": {
+              "source": "literal",
+              "value": "order-total"
+            }
+          }
+        },
+        "assertion": {
+          "type": "containsText",
+          "text": {
+            "source": "literal",
+            "value": "$75.00"
+          }
+        }
+      }
+    ]
+  },
+  "layout": {
+    "positions": {
+      "node-open-checkout": {
         "x": 48,
         "y": 144
       },
-      "data": {
-        "kind": "navigate",
-        "category": "entry",
-        "title": "Open local page",
-        "description": "Start from a deterministic blank page.",
-        "accent": "#19c2b0",
-        "codeLabel": "page.goto()",
-        "status": "ready",
-        "fields": [
-          {
-            "key": "url",
-            "label": "URL",
-            "value": "about:blank"
-          }
-        ]
-      }
-    },
-    {
-      "id": "node-load-checkout-fixture",
-      "type": "flow",
-      "position": {
+      "node-load-checkout-fixture": {
         "x": 360,
         "y": 144
       },
-      "data": {
-        "kind": "snippet",
-        "category": "snippet",
-        "title": "Load checkout fixture",
-        "description": "Inject a local checkout UI so the flow can run anywhere.",
-        "accent": "#f3d27a",
-        "codeLabel": "custom snippet",
-        "status": "ready",
-        "fields": [],
-        "snippetCode": "await page.setContent(`\n<main>\n  <h1>Checkout</h1>\n  <label>Coupon <input name='coupon' /></label>\n  <button data-testid='apply-coupon'>Apply</button>\n  <p data-testid='order-total'>$100.00</p>\n</main>\n<script>\n  const input = document.querySelector('[name=\"coupon\"]');\n  const button = document.querySelector('[data-testid=\"apply-coupon\"]');\n  const total = document.querySelector('[data-testid=\"order-total\"]');\n  button.addEventListener('click', () => {\n    total.textContent = input.value === 'SPRING25' ? '$75.00' : '$100.00';\n  });\n</script>\n`);"
-      }
-    },
-    {
-      "id": "node-fill-coupon",
-      "type": "flow",
-      "position": {
+      "node-fill-coupon": {
         "x": 692,
         "y": 144
       },
-      "data": {
-        "kind": "fill",
-        "category": "action",
-        "title": "Fill coupon",
-        "description": "Type or replace content in a field.",
-        "accent": "#f59e0b",
-        "codeLabel": "locator.fill()",
-        "status": "ready",
-        "fields": [
-          {
-            "key": "locator",
-            "label": "Locator",
-            "value": "[name=\"coupon\"]"
-          },
-          {
-            "key": "value",
-            "label": "Value",
-            "value": "SPRING25"
-          }
-        ]
-      }
-    },
-    {
-      "id": "node-apply-coupon",
-      "type": "flow",
-      "position": {
+      "node-apply-coupon": {
         "x": 1012,
         "y": 144
       },
-      "data": {
-        "kind": "click",
-        "category": "action",
-        "title": "Apply coupon",
-        "description": "Trigger a button, link, or custom locator.",
-        "accent": "#ffc857",
-        "codeLabel": "locator.click()",
-        "status": "ready",
-        "fields": [
-          {
-            "key": "locator",
-            "label": "Locator",
-            "value": "[data-testid=\"apply-coupon\"]"
-          }
-        ]
-      }
-    },
-    {
-      "id": "node-assert-total",
-      "type": "flow",
-      "position": {
+      "node-assert-total": {
         "x": 1332,
         "y": 144
-      },
-      "data": {
-        "kind": "assert",
-        "category": "assertion",
-        "title": "Discounted total appears",
-        "description": "Validate text, visibility, or state.",
-        "accent": "#ff825b",
-        "codeLabel": "expect()",
-        "status": "ready",
-        "fields": [
-          {
-            "key": "target",
-            "label": "Target",
-            "value": "[data-testid=\"order-total\"]"
-          },
-          {
-            "key": "expectation",
-            "label": "Expectation",
-            "value": "$75.00"
-          }
-        ]
       }
     }
-  ],
-  "edges": [
-    {
-      "id": "edge-checkout-1",
-      "source": "node-open-checkout",
-      "target": "node-load-checkout-fixture",
-      "type": "smoothstep",
-      "animated": true
-    },
-    {
-      "id": "edge-checkout-2",
-      "source": "node-load-checkout-fixture",
-      "target": "node-fill-coupon",
-      "type": "smoothstep",
-      "animated": true
-    },
-    {
-      "id": "edge-checkout-3",
-      "source": "node-fill-coupon",
-      "target": "node-apply-coupon",
-      "type": "smoothstep",
-      "animated": true
-    },
-    {
-      "id": "edge-checkout-4",
-      "source": "node-apply-coupon",
-      "target": "node-assert-total",
-      "type": "smoothstep",
-      "animated": true
-    }
-  ]
+  }
 }
