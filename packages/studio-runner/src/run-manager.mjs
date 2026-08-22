@@ -11,6 +11,8 @@ const RETENTION = {
 };
 
 const TERMINAL_STATUSES = new Set(['passed', 'failed', 'cancelled', 'timedOut', 'interrupted']);
+const DEFAULT_MAX_CONCURRENT_RUNS = 2;
+const MAX_QUEUED_RUNS = 24;
 
 async function writeAtomic(filePath, contents) {
   const temporaryPath = `${filePath}.tmp-${process.pid}`;
@@ -50,8 +52,12 @@ export class RunManager extends EventEmitter {
     loadDocument,
     resolveCompileOptions,
     testImport = '@playwright/test',
+    maxConcurrentRuns = DEFAULT_MAX_CONCURRENT_RUNS,
   }) {
     super();
+    this.maxConcurrentRuns = Math.max(1, maxConcurrentRuns);
+    this.queue = [];
+    this.running = 0;
     this.rootDir = rootDir;
     this.workspaceDir = workspaceDir ?? rootDir;
     this.runsDir = runsDir;
@@ -94,7 +100,21 @@ export class RunManager extends EventEmitter {
       .sort((left, right) => String(right.startedAt).localeCompare(String(left.startedAt)));
   }
 
+  async sweepOrphanedConfigs() {
+    const configDir = path.join(this.rootDir, '.studio-runs');
+    const entries = await fs.readdir(configDir).catch(() => []);
+
+    await Promise.all(
+      entries
+        .filter((entry) => entry.endsWith('.config.mjs'))
+        .filter((entry) => !this.active.has(entry.replace('.config.mjs', '')))
+        .map((entry) => fs.rm(path.join(configDir, entry), { force: true }).catch(() => undefined)),
+    );
+  }
+
   async reconcile() {
+    await this.sweepOrphanedConfigs();
+
     const runs = await this.listRuns();
 
     for (const manifest of runs) {
@@ -304,13 +324,39 @@ export class RunManager extends EventEmitter {
       ].join('\n'),
     );
 
+    if (this.queue.length >= MAX_QUEUED_RUNS) {
+      const rejected = {
+        ...manifest,
+        status: 'failed',
+        finishedAt: new Date().toISOString(),
+        error: `Too many runs are already queued. Wait for some to finish, then try again.`,
+      };
+
+      await fs.rm(configPath, { force: true }).catch(() => undefined);
+      await this.writeManifest(rejected);
+      return rejected;
+    }
+
     this.active.set(runId, { seq: 0, events: [], manifest });
 
     await this.appendEvent(runId, { type: 'run:queued', runId, testId, at: Date.now() });
 
-    void this.execute(runId, configPath, manifest);
+    this.queue.push({ runId, configPath, manifest });
+    this.drainQueue();
 
     return manifest;
+  }
+
+  drainQueue() {
+    while (this.running < this.maxConcurrentRuns && this.queue.length > 0) {
+      const next = this.queue.shift();
+      this.running += 1;
+
+      void this.execute(next.runId, next.configPath, next.manifest).finally(() => {
+        this.running -= 1;
+        this.drainQueue();
+      });
+    }
   }
 
   async execute(runId, configPath, initialManifest) {
@@ -435,7 +481,7 @@ export class RunManager extends EventEmitter {
     });
 
     this.active.delete(runId);
-    void this.collectGarbage();
+    await this.collectGarbage().catch(() => undefined);
   }
 
   async collectArtifacts(runId) {

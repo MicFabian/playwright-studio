@@ -405,6 +405,79 @@ describe('branch and loop variables stay readable afterwards', () => {
   });
 });
 
+describe('snippet declarations are validated', () => {
+  const snippetWith = (params: { name: string }[], outputs: { name: string }[]) => ({
+    formatVersion: 2 as const,
+    id: 's',
+    name: 'S',
+    description: '',
+    params: params.map((param) => ({ ...param, type: 'string' as const, required: true })),
+    outputs: outputs.map((output) => ({ ...output, type: 'string' as const })),
+    code: 'await page.waitForTimeout(1);',
+  });
+
+  const useIt = (): FlowStep => ({
+    id: 'u',
+    kind: 'useSnippet',
+    snippetId: 's',
+    args: { a: { source: 'literal', value: 'v' } },
+  });
+
+  it('rejects a snippet whose param and output share a name', () => {
+    const codes = compileFlow(doc([useIt()]), {
+      snippets: [snippetWith([{ name: 'a' }], [{ name: 'a' }])],
+    }).diagnostics.map((diagnostic) => diagnostic.code);
+
+    expect(codes).toContain('duplicate-snippet-name');
+  });
+
+  it('rejects a snippet param that would shadow the page fixture', () => {
+    const codes = compileFlow(doc([useIt()]), {
+      snippets: [snippetWith([{ name: 'page' }], [])],
+    }).diagnostics.map((diagnostic) => diagnostic.code);
+
+    expect(codes).toContain('invalid-snippet-name');
+  });
+
+  it('accepts distinct, valid names', () => {
+    const result = compileFlow(doc([useIt()]), {
+      snippets: [snippetWith([{ name: 'a' }], [{ name: 'result' }])],
+    });
+
+    expect(hasBlockingDiagnostics(result)).toBe(false);
+  });
+});
+
+describe('conditional assignment is surfaced', () => {
+  it('warns that a branch-only variable can be undefined', () => {
+    const result = compile([
+      {
+        id: 'cond',
+        kind: 'condition',
+        predicate: { type: 'expression', code: 'true' },
+        then: { steps: [{ id: 'x', kind: 'extract', target: testId('v'), variable: 'maybe' }] },
+      },
+      { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'maybe' } },
+    ]);
+
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
+      'conditionally-assigned',
+    );
+    expect(hasBlockingDiagnostics(result)).toBe(false);
+  });
+
+  it('does not warn for a variable set at the top level', () => {
+    const result = compile([
+      { id: 'x', kind: 'extract', target: testId('v'), variable: 'always' },
+      { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'always' } },
+    ]);
+
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).not.toContain(
+      'conditionally-assigned',
+    );
+  });
+});
+
 describe('declaration hygiene', () => {
   it('declares a reused variable once rather than emitting invalid duplicate lets', () => {
     const { source } = compile([

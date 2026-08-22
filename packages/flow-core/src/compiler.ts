@@ -706,6 +706,37 @@ class Compiler {
           return;
         }
 
+        const declaredNames = new Set<string>();
+        let invalidDeclaration = false;
+
+        [...snippet.params, ...snippet.outputs].forEach((entry) => {
+          if (!isValidIdentifier(entry.name)) {
+            this.error(
+              'invalid-snippet-name',
+              `Snippet "${snippet.name}" declares "${entry.name}", which is not a usable name here.`,
+              step.id,
+            );
+            invalidDeclaration = true;
+            return;
+          }
+
+          if (declaredNames.has(entry.name)) {
+            this.error(
+              'duplicate-snippet-name',
+              `Snippet "${snippet.name}" declares "${entry.name}" more than once.`,
+              step.id,
+            );
+            invalidDeclaration = true;
+            return;
+          }
+
+          declaredNames.add(entry.name);
+        });
+
+        if (invalidDeclaration) {
+          return;
+        }
+
         const missing = snippet.params
           .filter((param) => param.required !== false)
           .filter((param) => {
@@ -962,9 +993,21 @@ class Compiler {
         !bound.has(name) && !this.hoistedNames.has(name) && !this.declaredVariables.has(name),
     );
 
+    const unconditional = new Set<string>();
+    this.document.root.steps.forEach((step) =>
+      this.hoistedVariables(step).forEach((name) => unconditional.add(name)),
+    );
+
     declarations.forEach((name) => {
       this.hoistedNames.add(name);
       this.emitter.push(`let ${name};`);
+
+      if (!unconditional.has(name)) {
+        this.warn(
+          'conditionally-assigned',
+          `"${name}" is only set inside a branch or loop, so it is undefined when that path does not run.`,
+        );
+      }
     });
 
     this.emitSequence(this.document.root);

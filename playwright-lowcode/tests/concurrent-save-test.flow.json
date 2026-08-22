@@ -1,0 +1,17 @@
+{
+  "formatVersion": 2,
+  "id": "concurrent-save-test",
+  "name": "concurrent-save-test",
+  "status": "draft",
+  "updatedAt": "2026-08-22T19:52:10.383Z",
+  "root": {
+    "steps": [
+      {
+        "id": "step3"
+      }
+    ]
+  },
+  "layout": {
+    "positions": {}
+  }
+}

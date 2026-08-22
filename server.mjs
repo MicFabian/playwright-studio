@@ -100,9 +100,15 @@ function getHttpStatus(error) {
 }
 
 function normalizeRunId(value) {
-  return String(value || '')
+  const normalized = String(value || '')
     .trim()
     .replace(/[^a-zA-Z0-9_-]/g, '');
+
+  if (!normalized) {
+    throw createHttpError(400, 'That run id is not valid.');
+  }
+
+  return normalized;
 }
 
 
@@ -735,7 +741,13 @@ async function handleApi(request, response) {
 
     if (request.method === 'GET' && runEventsMatch) {
       const runId = normalizeRunId(runEventsMatch[1]);
-      const lastEventId = Number(request.headers['last-event-id'] || 0);
+      const requestedEventId = Number.parseInt(
+        String(request.headers['last-event-id'] ?? ''),
+        10,
+      );
+      const lastEventId = Number.isFinite(requestedEventId) && requestedEventId > 0
+        ? requestedEventId
+        : 0;
 
       response.statusCode = 200;
       response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');

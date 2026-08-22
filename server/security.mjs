@@ -32,10 +32,22 @@ function parseCookies(header) {
         return;
       }
 
-      cookies.set(
-        part.slice(0, separatorIndex).trim(),
-        decodeURIComponent(part.slice(separatorIndex + 1).trim()),
-      );
+      const name = part.slice(0, separatorIndex).trim();
+
+      if (cookies.has(name)) {
+        return;
+      }
+
+      const raw = part.slice(separatorIndex + 1).trim();
+      let value;
+
+      try {
+        value = decodeURIComponent(raw);
+      } catch {
+        value = raw;
+      }
+
+      cookies.set(name, value);
     });
 
   return cookies;
