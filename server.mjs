@@ -24,7 +24,8 @@ import { RunManager } from './packages/studio-runner/src/run-manager.mjs';
 import { importSpecSource } from './packages/flow-import/dist/index.mjs';
 
 const execFileAsync = promisify(execFile);
-const rootDir = process.cwd();
+const installRoot = process.cwd();
+const rootDir = process.env.STUDIO_WORKSPACE_ROOT || installRoot;
 const isProd = process.argv.includes('--prod');
 const allowNetworkListen = process.argv.includes('--unsafe-network-listen');
 const port = Number(process.env.PORT || (isProd ? 4173 : 5173));
@@ -61,7 +62,8 @@ const contentTypes = {
 const runsRootRelative = path.join('playwright-lowcode', 'runs').replaceAll('\\', '/');
 
 const runManager = new RunManager({
-  rootDir,
+  rootDir: installRoot,
+  workspaceDir: rootDir,
   runsDir: path.join(rootDir, runsRootRelative),
   compile: compileFlow,
 });
@@ -546,6 +548,15 @@ async function handleApi(request, response) {
       return;
     }
 
+    if (
+      request.method === 'GET' &&
+      url.pathname === '/api/launch-token' &&
+      process.env.STUDIO_E2E === '1'
+    ) {
+      sendJson(response, 200, { token: securityContext.launchToken });
+      return;
+    }
+
     authenticate(securityContext, request, {
       mutating: mutatingMethods.has(request.method),
     });
@@ -818,7 +829,7 @@ async function handleApi(request, response) {
 async function serveStatic(request, response) {
   const url = new URL(request.url || '/', 'http://localhost');
   const pathname = url.pathname === '/' ? '/index.html' : url.pathname;
-  const distPath = path.join(rootDir, 'dist', pathname);
+  const distPath = path.join(installRoot, 'dist', pathname);
 
   try {
     const file = await fs.readFile(distPath);
@@ -829,7 +840,7 @@ async function serveStatic(request, response) {
     );
     response.end(file);
   } catch {
-    const html = await fs.readFile(path.join(rootDir, 'dist', 'index.html'));
+    const html = await fs.readFile(path.join(installRoot, 'dist', 'index.html'));
     response.statusCode = 200;
     response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.end(html);
@@ -895,7 +906,7 @@ async function start() {
         !url.pathname.startsWith('/@');
 
       if (isPageRequest) {
-        const template = await fs.readFile(path.join(rootDir, 'index.html'), 'utf8');
+        const template = await fs.readFile(path.join(installRoot, 'index.html'), 'utf8');
         const html = await vite.transformIndexHtml(url.pathname, template);
         response.statusCode = 200;
         response.setHeader('Content-Type', 'text/html; charset=utf-8');

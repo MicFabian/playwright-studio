@@ -12,28 +12,48 @@ function readLaunchToken() {
   return new URLSearchParams(hash).get('token');
 }
 
-async function establishSession(): Promise<void> {
-  const launchToken = readLaunchToken();
+const CSRF_STORAGE_KEY = 'studio.csrf';
 
-  if (!launchToken) {
-    throw new Error(
-      'Studio was opened without a launch token. Restart the dev server and use the printed URL.',
-    );
-  }
-
+async function exchangeLaunchToken(launchToken: string): Promise<boolean> {
   const response = await fetch(`/api/session?token=${encodeURIComponent(launchToken)}`, {
     method: 'POST',
     credentials: 'same-origin',
   });
 
   if (!response.ok) {
-    throw new Error('Studio session could not be established.');
+    return false;
   }
 
   const { csrfToken: issued } = (await response.json()) as { csrfToken: string };
   csrfToken = issued;
-
+  sessionStorage.setItem(CSRF_STORAGE_KEY, issued);
   window.history.replaceState(null, '', window.location.pathname + window.location.search);
+  return true;
+}
+
+async function establishSession(): Promise<void> {
+  const launchToken = readLaunchToken();
+
+  if (launchToken && (await exchangeLaunchToken(launchToken))) {
+    return;
+  }
+
+  const stored = sessionStorage.getItem(CSRF_STORAGE_KEY);
+
+  if (stored) {
+    const probe = await fetch('/api/workspace', { credentials: 'same-origin' });
+
+    if (probe.ok) {
+      csrfToken = stored;
+      return;
+    }
+
+    sessionStorage.removeItem(CSRF_STORAGE_KEY);
+  }
+
+  throw new Error(
+    'Studio was opened without a launch token. Restart the dev server and use the printed URL.',
+  );
 }
 
 function ensureSession(): Promise<void> {

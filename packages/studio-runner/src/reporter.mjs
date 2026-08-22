@@ -71,7 +71,7 @@ export default class StudioReporter {
   }
 
   onEnd(result) {
-    write({ type: 'run:finished', status: result.status, at: Date.now() });
+    write({ type: 'reporter:finished', status: result.status, at: Date.now() });
   }
 
   printsToStdio() {

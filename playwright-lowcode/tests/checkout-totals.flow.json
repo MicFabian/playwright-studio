@@ -3,7 +3,7 @@
   "id": "checkout-totals",
   "name": "Checkout totals",
   "status": "stable",
-  "updatedAt": "2026-03-19T14:15:00.000Z",
+  "updatedAt": "2026-08-22T18:53:00.262Z",
   "root": {
     "steps": [
       {

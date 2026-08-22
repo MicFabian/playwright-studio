@@ -704,12 +704,25 @@ button.danger {
   font-family: var(--mono);
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
   .studio__body {
-    grid-template-columns: 180px 1fr 300px;
+    grid-template-columns: 180px 148px 1fr 300px;
   }
 
-  .library {
+  .library__block span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 1000px) {
+  .studio__body {
+    grid-template-columns: 160px 1fr;
+  }
+
+  .library,
+  .studio__side {
     display: none;
   }
 }

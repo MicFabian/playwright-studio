@@ -42,9 +42,17 @@ async function directorySize(directory) {
 }
 
 export class RunManager extends EventEmitter {
-  constructor({ rootDir, runsDir, compile, loadDocument, testImport = '@playwright/test' }) {
+  constructor({
+    rootDir,
+    workspaceDir,
+    runsDir,
+    compile,
+    loadDocument,
+    testImport = '@playwright/test',
+  }) {
     super();
     this.rootDir = rootDir;
+    this.workspaceDir = workspaceDir ?? rootDir;
     this.runsDir = runsDir;
     this.compile = compile;
     this.loadDocument = loadDocument;
@@ -263,7 +271,9 @@ export class RunManager extends EventEmitter {
 
     await this.writeManifest(manifest);
 
-    const configPath = path.join(runDir, 'run.config.mjs');
+    const configDir = path.join(this.rootDir, '.studio-runs');
+    await fs.mkdir(configDir, { recursive: true });
+    const configPath = path.join(configDir, `${runId}.config.mjs`);
     await fs.writeFile(
       configPath,
       [
@@ -313,9 +323,13 @@ export class RunManager extends EventEmitter {
         configPath,
       ],
       {
-        cwd: this.rootDir,
+        cwd: this.workspaceDir,
         stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
-        env: { ...process.env, FORCE_COLOR: '0' },
+        env: {
+          ...process.env,
+          FORCE_COLOR: '0',
+          NODE_PATH: path.join(this.rootDir, 'node_modules'),
+        },
       },
     );
 
@@ -397,6 +411,10 @@ export class RunManager extends EventEmitter {
           : manifest.steps.find((step) => step.error)?.error || 'The test run failed.',
       artifacts,
     };
+
+    await fs
+      .rm(path.join(this.rootDir, '.studio-runs', `${runId}.config.mjs`), { force: true })
+      .catch(() => undefined);
 
     await this.writeManifest(manifest);
     await this.appendEvent(runId, {
