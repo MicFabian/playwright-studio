@@ -324,6 +324,7 @@ export class RunManager extends EventEmitter {
       ],
       {
         cwd: this.workspaceDir,
+        detached: true,
         stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
         env: {
           ...process.env,
@@ -398,7 +399,13 @@ export class RunManager extends EventEmitter {
 
     logStream.end();
 
-    const cancelled = this.active.get(runId)?.cancelled === true;
+    const finalState = this.active.get(runId);
+
+    if (finalState?.killTimer) {
+      clearTimeout(finalState.killTimer);
+    }
+
+    const cancelled = finalState?.cancelled === true;
     const artifacts = await this.collectArtifacts(runId);
 
     manifest = {
@@ -469,11 +476,23 @@ export class RunManager extends EventEmitter {
 
     state.cancelled = true;
 
+    const { pid } = state.child;
+
     try {
-      process.kill(-state.child.pid, 'SIGTERM');
+      process.kill(-pid, 'SIGTERM');
     } catch {
       state.child.kill('SIGTERM');
     }
+
+    state.killTimer = setTimeout(() => {
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch {
+        state.child.kill('SIGKILL');
+      }
+    }, 5000);
+
+    state.killTimer.unref?.();
 
     return true;
   }
