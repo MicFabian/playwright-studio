@@ -1,12 +1,27 @@
 import { useMemo, useState } from 'react';
 import { compileFlow } from '../../lib/flowCore';
 import { useEditorStore } from '../../stores/editorStore';
+import type { PlaywrightConfigInfo, SnippetItem } from '../../types';
 
-export function CodePreview() {
+interface CodePreviewProps {
+  snippets?: SnippetItem[];
+  playwrightConfig?: PlaywrightConfigInfo;
+}
+
+export function CodePreview({ snippets = [], playwrightConfig }: CodePreviewProps) {
   const document = useEditorStore((state) => state.document);
   const [copied, setCopied] = useState(false);
 
-  const result = useMemo(() => (document ? compileFlow(document) : null), [document]);
+  const result = useMemo(
+    () =>
+      document
+        ? compileFlow(document, {
+            snippets,
+            baseURL: playwrightConfig?.baseURL ?? null,
+          })
+        : null,
+    [document, snippets, playwrightConfig],
+  );
 
   if (!result) {
     return <div className="preview preview--empty">Select a flow to preview its spec.</div>;

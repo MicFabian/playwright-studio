@@ -27,6 +27,8 @@ import {
   type TryStep,
   type ValueExpr,
   type AssertPageStep,
+  type SnippetDefinition,
+  type UseSnippetStep,
 } from './ir';
 
 export type CompileProfile = 'commit' | 'studio-run';
@@ -35,6 +37,7 @@ export interface CompileOptions {
   profile?: CompileProfile;
   testImport?: string;
   baseURL?: string | null;
+  snippets?: SnippetDefinition[];
 }
 
 const RESERVED_IDENTIFIERS = new Set([
@@ -135,6 +138,7 @@ class Compiler {
     private readonly profile: CompileProfile,
     private readonly testImport: string,
     private readonly baseURL: string | null,
+    private readonly snippets: Map<string, SnippetDefinition>,
   ) {}
 
   private error(code: string, message: string, stepId?: string): void {
@@ -252,6 +256,19 @@ class Compiler {
     return this.value(step.url, step.id);
   }
 
+  private literalForType(type: 'string' | 'number' | 'boolean', raw: string): string {
+    if (type === 'number') {
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? String(parsed) : '0';
+    }
+
+    if (type === 'boolean') {
+      return raw === 'true' ? 'true' : 'false';
+    }
+
+    return quote(raw);
+  }
+
   private timeout(timeoutMs: number | undefined): string {
     return typeof timeoutMs === 'number' && timeoutMs > 0 ? `{ timeout: ${timeoutMs} }` : '';
   }
@@ -322,6 +339,27 @@ class Compiler {
         this.error('unknown-predicate', 'Unsupported condition.', stepId);
         return 'false';
     }
+  }
+
+  private hoistedVariables(step: FlowStep): string[] {
+    if (step.kind === 'extract') {
+      return isValidIdentifier(step.variable) ? [step.variable] : [];
+    }
+
+    if (step.kind === 'call') {
+      return step.assignTo && isValidIdentifier(step.assignTo) ? [step.assignTo] : [];
+    }
+
+    if (step.kind === 'useSnippet') {
+      const snippet = this.snippets.get(step.snippetId);
+
+      return Object.entries(step.assign ?? {})
+        .filter(([outputName]) => snippet?.outputs.some((output) => output.name === outputName))
+        .map(([, variableName]) => variableName)
+        .filter((variableName) => isValidIdentifier(variableName));
+    }
+
+    return [];
   }
 
   private stepLabel(step: FlowStep): string {
@@ -471,7 +509,7 @@ class Compiler {
               : 'textContent()';
 
         this.declaredVariables.add(extract.variable);
-        this.emitter.push(`const ${extract.variable} = await ${locator}.${accessor};`);
+        this.emitter.push(`${extract.variable} = await ${locator}.${accessor};`);
         return;
       }
       case 'call': {
@@ -496,11 +534,101 @@ class Compiler {
           }
 
           this.declaredVariables.add(call.assignTo);
-          this.emitter.push(`const ${call.assignTo} = ${invocation}`);
+          this.emitter.push(`${call.assignTo} = ${invocation}`);
           return;
         }
 
         this.emitter.push(invocation);
+        return;
+      }
+      case 'useSnippet': {
+        const useStep = step as UseSnippetStep;
+        const snippet = this.snippets.get(useStep.snippetId);
+
+        if (!snippet) {
+          this.error(
+            'unknown-snippet',
+            useStep.snippetId
+              ? `Snippet "${useStep.snippetId}" no longer exists in this workspace.`
+              : 'This step has no snippet selected.',
+            step.id,
+          );
+          return;
+        }
+
+        const missing = snippet.params
+          .filter((param) => param.required !== false)
+          .filter((param) => {
+            const supplied = useStep.args[param.name];
+            return supplied == null && param.defaultValue == null;
+          });
+
+        if (missing.length > 0) {
+          this.error(
+            'missing-snippet-argument',
+            `Snippet "${snippet.name}" needs ${missing.map((param) => param.name).join(', ')}.`,
+            step.id,
+          );
+          return;
+        }
+
+        const bodyLines = snippet.code.trimEnd().split('\n');
+
+        if (bodyLines.every((line) => !line.trim())) {
+          this.warn('empty-snippet', `Snippet "${snippet.name}" has no code.`, step.id);
+          return;
+        }
+
+        const assignments = Object.entries(useStep.assign ?? {}).filter(([outputName, variableName]) => {
+          if (!snippet.outputs.some((output) => output.name === outputName)) {
+            this.error(
+              'unknown-snippet-output',
+              `Snippet "${snippet.name}" does not produce "${outputName}".`,
+              step.id,
+            );
+            return false;
+          }
+
+          if (!isValidIdentifier(variableName)) {
+            this.error('invalid-variable', `"${variableName}" is not a valid variable name.`, step.id);
+            return false;
+          }
+
+          return true;
+        });
+
+        this.emitter.push('{');
+        this.emitter.indent();
+
+        snippet.params.forEach((param) => {
+          const supplied = useStep.args[param.name];
+          const expression = supplied
+            ? this.value(supplied, step.id)
+            : this.literalForType(param.type, param.defaultValue ?? '');
+
+          this.emitter.push(`const ${param.name} = ${expression};`);
+          this.declaredVariables.add(param.name);
+        });
+
+        snippet.outputs.forEach((output) => {
+          this.emitter.push(`let ${output.name};`);
+          this.declaredVariables.add(output.name);
+        });
+
+        bodyLines.forEach((line) => this.emitter.push(line.trimEnd()));
+
+        assignments.forEach(([outputName, variableName]) =>
+          this.emitter.push(`${variableName} = ${outputName};`),
+        );
+
+        this.emitter.dedent();
+        this.emitter.push('}');
+
+        snippet.params.forEach((param) => this.declaredVariables.delete(param.name));
+        snippet.outputs.forEach((output) => this.declaredVariables.delete(output.name));
+
+        assignments.forEach(([, variableName]) => this.declaredVariables.add(variableName));
+
         return;
       }
       case 'code': {
@@ -630,6 +758,10 @@ class Compiler {
       this.profile === 'studio-run'
         ? `[${step.id}] ${this.stepLabel(step)}`
         : this.stepLabel(step);
+
+    const hoisted = wrapped ? this.hoistedVariables(step) : [];
+
+    hoisted.forEach((name) => this.emitter.push(`let ${name};`));
 
     if (wrapped) {
       this.emitter.push(`await test.step(${quote(title)}, async () => {`);
@@ -808,6 +940,7 @@ export function compileFlow(document: FlowDocument, options: CompileOptions = {}
     options.profile ?? 'commit',
     options.testImport ?? '@playwright/test',
     options.baseURL ?? null,
+    new Map((options.snippets ?? []).map((snippet) => [snippet.id, snippet])),
   );
 
   return compiler.compile();

@@ -305,9 +305,19 @@ describe('extract binds variables for later steps', () => {
       },
     ]);
 
-    expect(result.source).toContain('const orderCount = await page.getByTestId("count").textContent();');
+    expect(result.source).toContain('let orderCount;');
+    expect(result.source).toContain('orderCount = await page.getByTestId("count").textContent();');
     expect(result.source).toContain('.fill(orderCount);');
     expect(hasBlockingDiagnostics(result)).toBe(false);
+
+    const lines = result.source.split('\n').map((line) => line.trim());
+    const declaration = lines.indexOf('let orderCount;');
+    const wrapper = lines.findIndex((line) => line.startsWith('await test.step('));
+
+    expect(declaration).toBeGreaterThanOrEqual(0);
+    expect(declaration).toBeLessThan(lines.length);
+    expect(lines[declaration + 1]).toContain('test.step');
+    expect(wrapper).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -376,6 +386,120 @@ describe('test options', () => {
     expect(source).toContain('tag: ["@smoke"]');
     expect(source).toContain('{ type: "issue", description: "FM-1" }');
     expect(source).toContain('test.setTimeout(60000);');
+  });
+});
+
+describe('snippets', () => {
+  const waitForDashboard = {
+    formatVersion: 2 as const,
+    id: 'wait-for-dashboard',
+    name: 'Wait for dashboard',
+    description: 'Confirm the dashboard headline.',
+    params: [
+      { name: 'headline', type: 'string' as const },
+      { name: 'timeoutMs', type: 'number' as const, required: false, defaultValue: '5000' },
+    ],
+    outputs: [{ name: 'actual', type: 'string' as const }],
+    code: [
+      'const title = page.getByTestId("dashboard-title");',
+      'await expect(title).toContainText(headline, { timeout: timeoutMs });',
+      'actual = (await title.textContent()) ?? "";',
+    ].join('\n'),
+  };
+
+  const useStep = (overrides = {}): FlowStep => ({
+    id: 'use',
+    kind: 'useSnippet',
+    snippetId: 'wait-for-dashboard',
+    args: { headline: { source: 'literal', value: 'Dashboard' } },
+    ...overrides,
+  });
+
+  it('inlines the snippet with typed argument bindings', () => {
+    const { source, diagnostics } = compileFlow(doc([useStep()]), {
+      snippets: [waitForDashboard],
+    });
+
+    expect(diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toHaveLength(0);
+    expect(source).toContain('const headline = "Dashboard";');
+    expect(source).toContain('const timeoutMs = 5000;');
+    expect(source).toContain('await expect(title).toContainText(headline, { timeout: timeoutMs });');
+  });
+
+  it('scopes snippet bindings to the snippet block', () => {
+    const result = compileFlow(
+      doc([
+        useStep(),
+        { id: 'after', kind: 'fill', target: testId('x'), value: { source: 'variable', name: 'headline' } },
+      ]),
+      { snippets: [waitForDashboard] },
+    );
+
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain('unknown-variable');
+  });
+
+  it('captures a declared output into a caller variable', () => {
+    const result = compileFlow(
+      doc([
+        useStep({ assign: { actual: 'seenHeadline' } }),
+        {
+          id: 'after',
+          kind: 'fill',
+          target: testId('x'),
+          value: { source: 'variable', name: 'seenHeadline' },
+        },
+      ]),
+      { snippets: [waitForDashboard] },
+    );
+
+    expect(hasBlockingDiagnostics(result)).toBe(false);
+    expect(result.source).toContain('let seenHeadline;');
+    expect(result.source).toContain('seenHeadline = actual;');
+    expect(result.source).toContain('.fill(seenHeadline);');
+
+    const lines = result.source.split('\n').map((line) => line.trim());
+
+    expect(lines[lines.indexOf('let seenHeadline;') + 1]).toContain('test.step');
+  });
+
+  it('reports a missing required argument', () => {
+    const codes = compileFlow(doc([useStep({ args: {} })]), {
+      snippets: [waitForDashboard],
+    }).diagnostics.map((diagnostic) => diagnostic.code);
+
+    expect(codes).toContain('missing-snippet-argument');
+  });
+
+  it('reports a snippet that no longer exists', () => {
+    const codes = compileFlow(doc([useStep()]), { snippets: [] }).diagnostics.map(
+      (diagnostic) => diagnostic.code,
+    );
+
+    expect(codes).toContain('unknown-snippet');
+  });
+
+  it('reports an output the snippet does not declare', () => {
+    const codes = compileFlow(doc([useStep({ assign: { missing: 'x' } })]), {
+      snippets: [waitForDashboard],
+    }).diagnostics.map((diagnostic) => diagnostic.code);
+
+    expect(codes).toContain('unknown-snippet-output');
+  });
+
+  it('binds a data column as a snippet argument', () => {
+    const result = compileFlow(
+      {
+        ...doc([useStep({ args: { headline: { source: 'variable', name: 'expected' } } })]),
+        data: {
+          columns: [{ name: 'expected' }],
+          cases: [{ name: 'row', values: { expected: 'Dashboard' } }],
+        },
+      },
+      { snippets: [waitForDashboard] },
+    );
+
+    expect(hasBlockingDiagnostics(result)).toBe(false);
+    expect(result.source).toContain('const headline = expected;');
   });
 });
 

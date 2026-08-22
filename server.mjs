@@ -76,6 +76,7 @@ const runManager = new RunManager({
     return {
       testImport: project.playwright.testImport,
       baseURL: playwrightConfig.baseURL,
+      snippets: await loadSnippets(project),
     };
   },
 });
@@ -229,12 +230,38 @@ async function loadSnippets(project) {
   return snippets.sort((left, right) => left.name.localeCompare(right.name));
 }
 
+const SNIPPET_PARAM_TYPES = new Set(['string', 'number', 'boolean']);
+
+function normalizeSnippetParam(raw) {
+  if (typeof raw === 'string') {
+    return { name: raw, type: 'string', required: true };
+  }
+
+  return {
+    name: String(raw?.name || 'value'),
+    type: SNIPPET_PARAM_TYPES.has(raw?.type) ? raw.type : 'string',
+    ...(raw?.description ? { description: String(raw.description) } : {}),
+    ...(raw?.required === false ? { required: false } : { required: true }),
+    ...(raw?.defaultValue != null ? { defaultValue: String(raw.defaultValue) } : {}),
+  };
+}
+
+function normalizeSnippetOutput(raw) {
+  return {
+    name: String(raw?.name || 'value'),
+    type: SNIPPET_PARAM_TYPES.has(raw?.type) ? raw.type : 'string',
+    ...(raw?.description ? { description: String(raw.description) } : {}),
+  };
+}
+
 function materializeSnippet(relativePath, raw) {
   return {
+    formatVersion: 2,
     id: slugify(raw.id || raw.name || path.basename(relativePath, '.snippet.json')),
     name: String(raw.name || 'Untitled snippet'),
     description: String(raw.description || ''),
-    params: Array.isArray(raw.params) ? raw.params.map(String) : [],
+    params: Array.isArray(raw.params) ? raw.params.map(normalizeSnippetParam) : [],
+    outputs: Array.isArray(raw.outputs) ? raw.outputs.map(normalizeSnippetOutput) : [],
     code: String(raw.code || ''),
     updatedAt: String(raw.updatedAt || ''),
     filePath: relativePath.replaceAll('\\', '/'),
@@ -397,6 +424,7 @@ async function persistTest(project, payload, fallbackId) {
   const compiled = compileFlow(document, {
     testImport: project.playwright.testImport,
     baseURL: playwrightConfig.baseURL,
+    snippets: await loadSnippets(project),
   });
 
   await writeFileAtomic(
@@ -432,18 +460,21 @@ async function persistSnippet(project, payload, fallbackId) {
     name: payload.name,
     description: payload.description,
     params: payload.params,
+    outputs: payload.outputs,
     code: payload.code,
     updatedAt: new Date().toISOString(),
   });
 
-  await fs.writeFile(
+  await writeFileAtomic(
     path.join(rootDir, filePath),
     `${JSON.stringify(
       {
+        formatVersion: 2,
         id: snippet.id,
         name: snippet.name,
         description: snippet.description,
         params: snippet.params,
+        outputs: snippet.outputs,
         code: snippet.code,
         updatedAt: snippet.updatedAt,
       },

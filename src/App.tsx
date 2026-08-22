@@ -9,10 +9,11 @@ import { RunPanel } from './features/run/RunPanel';
 import { ImportDialog } from './features/import/ImportDialog';
 import { CodePreview } from './features/flow/CodePreview';
 import { DataPanel } from './features/flow/DataPanel';
+import { SnippetEditor } from './features/snippets/SnippetEditor';
 import { TopBar } from './features/shell/TopBar';
 import { useEditorStore } from './stores/editorStore';
 import { useRunStore } from './stores/runStore';
-import { createTest, loadWorkspace, saveTest } from './lib/workspaceClient';
+import { createSnippet, createTest, loadWorkspace, saveTest } from './lib/workspaceClient';
 import type { WorkspaceData } from './types';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -23,8 +24,9 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [panel, setPanel] = useState<'inspector' | 'data' | 'code' | 'run'>('inspector');
+  const [panel, setPanel] = useState<'inspector' | 'data' | 'code' | 'run' | 'snippet'>('inspector');
   const [importing, setImporting] = useState(false);
+  const [activeSnippetId, setActiveSnippetId] = useState<string | null>(null);
 
   const document = useEditorStore((state) => state.document);
   const dirty = useEditorStore((state) => state.dirty);
@@ -185,6 +187,17 @@ export default function App() {
           onSelect={handleSelectTest}
           onCreate={handleCreateTest}
           onImport={() => setImporting(true)}
+          activeSnippetId={activeSnippetId}
+          onSelectSnippet={(snippetId) => {
+            setActiveSnippetId(snippetId);
+            setPanel('snippet');
+          }}
+          onCreateSnippet={async () => {
+            const { snippet } = await createSnippet('Untitled snippet');
+            await hydrate(activeTestId ?? undefined);
+            setActiveSnippetId(snippet.id);
+            setPanel('snippet');
+          }}
         />
 
         <BlockLibrary />
@@ -197,7 +210,15 @@ export default function App() {
 
         <section className="studio__side">
           <nav className="panel-tabs">
-            {(['inspector', 'data', 'code', 'run'] as const).map((tab) => (
+            {(
+              [
+                'inspector',
+                'data',
+                ...(activeSnippetId ? (['snippet'] as const) : []),
+                'code',
+                'run',
+              ] as const
+            ).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -208,16 +229,29 @@ export default function App() {
                   ? 'Inspector'
                   : tab === 'data'
                     ? 'Data'
-                    : tab === 'code'
-                      ? 'Code'
-                      : 'Run'}
+                    : tab === 'snippet'
+                      ? 'Snippet'
+                      : tab === 'code'
+                        ? 'Code'
+                        : 'Run'}
               </button>
             ))}
           </nav>
 
-          {panel === 'inspector' ? <StepInspector /> : null}
+          {panel === 'inspector' ? <StepInspector snippets={workspace?.snippets ?? []} /> : null}
           {panel === 'data' ? <DataPanel /> : null}
-          {panel === 'code' ? <CodePreview /> : null}
+          {panel === 'snippet' ? (
+            <SnippetEditor
+              snippet={workspace?.snippets.find((item) => item.id === activeSnippetId) ?? null}
+              onSaved={() => void hydrate(activeTestId ?? undefined)}
+            />
+          ) : null}
+          {panel === 'code' ? (
+            <CodePreview
+              snippets={workspace?.snippets ?? []}
+              playwrightConfig={workspace?.playwrightConfig}
+            />
+          ) : null}
           {panel === 'run' ? <RunPanel /> : null}
         </section>
       </div>

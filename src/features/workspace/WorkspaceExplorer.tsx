@@ -1,4 +1,4 @@
-import { FileDown, FilePlus, FileText } from 'lucide-react';
+import { FileDown, FilePlus, FileText, Package } from 'lucide-react';
 import type { WorkspaceData } from '../../types';
 import { ConfigBadge } from './ConfigBadge';
 
@@ -8,6 +8,9 @@ interface WorkspaceExplorerProps {
   onSelect: (testId: string) => void;
   onCreate: () => void;
   onImport: () => void;
+  activeSnippetId: string | null;
+  onSelectSnippet: (snippetId: string) => void;
+  onCreateSnippet: () => void;
 }
 
 export function WorkspaceExplorer({
@@ -16,6 +19,9 @@ export function WorkspaceExplorer({
   onSelect,
   onCreate,
   onImport,
+  activeSnippetId,
+  onSelectSnippet,
+  onCreateSnippet,
 }: WorkspaceExplorerProps) {
   return (
     <nav className="explorer" aria-label="Flows">
@@ -44,6 +50,29 @@ export function WorkspaceExplorer({
               <span className={`explorer__status explorer__status--${test.status}`}>
                 {test.steps}
               </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <header className="explorer__head">
+        <h2>Snippets</h2>
+        <button type="button" onClick={onCreateSnippet} aria-label="New snippet" title="New snippet">
+          <FilePlus size={14} aria-hidden />
+        </button>
+      </header>
+
+      <ul className="explorer__list">
+        {workspace?.snippets.map((snippet) => (
+          <li key={snippet.id}>
+            <button
+              type="button"
+              className={snippet.id === activeSnippetId ? 'is-active' : ''}
+              onClick={() => onSelectSnippet(snippet.id)}
+            >
+              <Package size={13} aria-hidden />
+              <span className="explorer__name">{snippet.name}</span>
+              <span className="explorer__status">{snippet.params.length}</span>
             </button>
           </li>
         ))}

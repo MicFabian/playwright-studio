@@ -8,6 +8,7 @@ import {
   type ValueExpr,
 } from '../../lib/flowCore';
 import { useEditorStore } from '../../stores/editorStore';
+import type { SnippetItem } from '../../types';
 
 const LOCATOR_STRATEGIES: { value: LocatorRef['by']; label: string }[] = [
   { value: 'role', label: 'Role' },
@@ -262,7 +263,7 @@ function LocatorEditor({
   );
 }
 
-export function StepInspector() {
+export function StepInspector({ snippets = [] }: { snippets?: SnippetItem[] }) {
   const document = useEditorStore((state) => state.document);
   const selectedStepId = useEditorStore((state) => state.selectedStepId);
   const editStep = useEditorStore((state) => state.editStep);
@@ -462,6 +463,80 @@ export function StepInspector() {
             onChange={(event) => update({ text: event.target.value } as Partial<FlowStep>)}
           />
         </Field>
+      ) : null}
+
+      {step.kind === 'useSnippet' ? (
+        <>
+          <Field label="Snippet">
+            <select
+              value={step.snippetId}
+              onChange={(event) =>
+                editStep(step.id, (current) =>
+                  current.kind === 'useSnippet'
+                    ? { ...current, snippetId: event.target.value, args: {}, assign: {} }
+                    : current,
+                )
+              }
+            >
+              <option value="">Pick a snippet…</option>
+              {snippets.map((snippet) => (
+                <option key={snippet.id} value={snippet.id}>
+                  {snippet.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {(snippets.find((snippet) => snippet.id === step.snippetId)?.params ?? []).map(
+            (param) => (
+              <ValueField
+                key={param.name}
+                label={`${param.name} (${param.type})`}
+                value={step.args[param.name]}
+                columns={dataColumns}
+                hint={param.description}
+                onChange={(value) =>
+                  editStep(step.id, (current) =>
+                    current.kind === 'useSnippet'
+                      ? { ...current, args: { ...current.args, [param.name]: value } }
+                      : current,
+                  )
+                }
+              />
+            ),
+          )}
+
+          {(snippets.find((snippet) => snippet.id === step.snippetId)?.outputs ?? []).map(
+            (output) => (
+              <Field
+                key={output.name}
+                label={`Capture ${output.name}`}
+                hint="Later steps can use this variable name."
+              >
+                <input
+                  value={step.assign?.[output.name] ?? ''}
+                  placeholder={output.name}
+                  onChange={(event) =>
+                    editStep(step.id, (current) =>
+                      current.kind === 'useSnippet'
+                        ? {
+                            ...current,
+                            assign: event.target.value
+                              ? { ...current.assign, [output.name]: event.target.value }
+                              : Object.fromEntries(
+                                  Object.entries(current.assign ?? {}).filter(
+                                    ([key]) => key !== output.name,
+                                  ),
+                                ),
+                          }
+                        : current,
+                    )
+                  }
+                />
+              </Field>
+            ),
+          )}
+        </>
       ) : null}
 
       {step.kind === 'call' ? (

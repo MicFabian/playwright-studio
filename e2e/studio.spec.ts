@@ -1,12 +1,22 @@
 import { expect, test, type Page } from '@playwright/test';
 
+declare global {
+  interface Window {
+    __studioStepCount?: () => number;
+  }
+}
+
 const library = (page: Page) => page.locator('.library');
 const canvasNodes = (page: Page) => page.locator('.react-flow__node');
 
+function stepCount(page: Page) {
+  return page.evaluate(() => window.__studioStepCount?.() ?? 0);
+}
+
 async function addBlock(page: Page, name: string) {
-  const before = await canvasNodes(page).count();
+  const before = await stepCount(page);
   await library(page).getByRole('button', { name, exact: true }).click();
-  await expect(canvasNodes(page)).toHaveCount(before + 1);
+  await expect.poll(() => stepCount(page)).toBe(before + 1);
 }
 
 async function openStudio(page: Page, baseURL: string) {
@@ -89,12 +99,12 @@ test('generated code prefers user-facing locators', async ({ page }) => {
 });
 
 test('undo reverses an edit', async ({ page }) => {
-  const before = await canvasNodes(page).count();
+  const before = await stepCount(page);
 
   await addBlock(page, 'Hover');
 
   await page.keyboard.press('ControlOrMeta+z');
-  await expect(canvasNodes(page)).toHaveCount(before);
+  await expect.poll(() => stepCount(page)).toBe(before);
 });
 
 test('importing a spec previews fidelity before adopting', async ({ page }) => {

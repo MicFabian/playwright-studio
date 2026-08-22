@@ -160,6 +160,16 @@ export const blockRegistry: Record<FlowStepKind, BlockDefinition> = {
     icon: 'FunctionSquare',
     scoped: false,
   },
+  useSnippet: {
+    kind: 'useSnippet',
+    category: 'action',
+    title: 'Use snippet',
+    description: 'Run a reusable snippet with typed inputs and outputs.',
+    codeLabel: 'snippet',
+    accentToken: 'var(--block-snippet)',
+    icon: 'Package',
+    scoped: false,
+  },
   code: {
     kind: 'code',
     category: 'action',
@@ -197,6 +207,7 @@ export const blockLibrary: readonly FlowStepKind[] = [
   'loop',
   'try',
   'call',
+  'useSnippet',
   'code',
   'comment',
 ];
@@ -246,6 +257,8 @@ export function createStep(kind: FlowStepKind, id: string): FlowStep {
       };
     case 'call':
       return { id, kind, target: 'helpers.signIn', args: [] };
+    case 'useSnippet':
+      return { id, kind, snippetId: '', args: {} };
     case 'code':
       return { id, kind, code: "await page.waitForLoadState('networkidle');" };
     case 'comment':
@@ -265,6 +278,8 @@ export function describeStep(step: FlowStep): string {
       return `for each ${step.itemName}`;
     case 'call':
       return step.target;
+    case 'useSnippet':
+      return step.snippetId || 'pick a snippet';
     case 'comment':
       return step.text;
     case 'assertPage':

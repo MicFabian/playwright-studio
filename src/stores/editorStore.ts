@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   compileFlow,
+  countSteps,
   createStep,
   insertStep,
   locateStep,
@@ -51,6 +52,12 @@ function nextId(): string {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `step-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+declare global {
+  interface Window {
+    __studioStepCount?: () => number;
+  }
 }
 
 export const useEditorStore = create<EditorState>((set, get) => {
@@ -220,5 +227,12 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
   };
 });
+
+if (typeof window !== 'undefined') {
+  window.__studioStepCount = () => {
+    const document = useEditorStore.getState().document;
+    return document ? countSteps(document.root) : 0;
+  };
+}
 
 export type { ScopeSlot, StepPath };

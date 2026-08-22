@@ -171,6 +171,13 @@ export interface CallStep extends StepBase {
   assignTo?: string;
 }
 
+export interface UseSnippetStep extends StepBase {
+  kind: 'useSnippet';
+  snippetId: string;
+  args: Record<string, ValueExpr>;
+  assign?: Record<string, string>;
+}
+
 export interface CodeStep extends StepBase {
   kind: 'code';
   code: string;
@@ -196,6 +203,7 @@ export type FlowStep =
   | LoopStep
   | TryStep
   | CallStep
+  | UseSnippetStep
   | CodeStep
   | CommentStep;
 
@@ -208,6 +216,33 @@ export interface Sequence {
 export interface FlowLayout {
   positions: Record<string, { x: number; y: number }>;
   collapsedScopes?: Record<string, boolean>;
+}
+
+export type SnippetParamType = 'string' | 'number' | 'boolean';
+
+export interface SnippetParam {
+  name: string;
+  type: SnippetParamType;
+  description?: string;
+  required?: boolean;
+  defaultValue?: string;
+}
+
+export interface SnippetOutput {
+  name: string;
+  type: SnippetParamType;
+  description?: string;
+}
+
+export interface SnippetDefinition {
+  formatVersion: 2;
+  id: string;
+  name: string;
+  description: string;
+  params: SnippetParam[];
+  outputs: SnippetOutput[];
+  code: string;
+  updatedAt?: string;
 }
 
 export interface DataColumn {

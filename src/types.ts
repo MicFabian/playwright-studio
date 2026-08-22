@@ -1,6 +1,12 @@
-import type { FlowDocument } from './lib/flowCore';
+import type {
+  FlowDocument,
+  SnippetDefinition,
+  SnippetOutput,
+  SnippetParam,
+  SnippetParamType,
+} from './lib/flowCore';
 
-export type { FlowDocument };
+export type { FlowDocument, SnippetOutput, SnippetParam, SnippetParamType };
 
 export interface TestTreeItem {
   id: string;
@@ -9,13 +15,7 @@ export interface TestTreeItem {
   status: 'stable' | 'draft' | 'failing';
 }
 
-export interface SnippetItem {
-  id: string;
-  name: string;
-  description: string;
-  params: string[];
-  code: string;
-  updatedAt?: string;
+export interface SnippetItem extends SnippetDefinition {
   filePath?: string;
 }
 

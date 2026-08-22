@@ -1100,3 +1100,82 @@ button.danger {
   flex: 1;
   min-width: 0;
 }
+
+.snippets {
+  overflow-y: auto;
+  padding: var(--step-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+  min-height: 0;
+}
+
+.snippets--empty {
+  color: var(--text-3);
+}
+
+.snippets__section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--step-2);
+}
+
+.snippets__section h3 {
+  margin: 0;
+  font-size: 0.72rem;
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.snippets__section header button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px var(--step-2);
+  font-size: 0.75rem;
+}
+
+.snippets__row {
+  display: grid;
+  grid-template-columns: 1fr 5.5rem 1fr auto;
+  gap: var(--step-1);
+  margin-bottom: var(--step-1);
+  align-items: center;
+}
+
+.snippets__row:has(> :nth-child(3):last-child) {
+  grid-template-columns: 1fr 5.5rem auto;
+}
+
+.snippets__row input,
+.snippets__row select {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--step-1) var(--step-2);
+  font-size: 0.78rem;
+  min-width: 0;
+}
+
+.snippets__actions {
+  margin-top: auto;
+  padding-top: var(--step-3);
+  border-top: 1px solid var(--border);
+}
+
+.snippets__actions button {
+  width: 100%;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: var(--radius);
+  padding: var(--step-2);
+  font-size: 0.85rem;
+}

@@ -20,6 +20,7 @@
   --block-action: #b8801a;
   --block-assertion: #c2542f;
   --block-logic: #6b4fbb;
+  --block-snippet: #2f7a8f;
   --block-code: #5f6b7a;
   --block-annotation: #8a8478;
 
@@ -65,6 +66,7 @@
     --block-action: #e0b352;
     --block-assertion: #f0876a;
     --block-logic: #a68df0;
+    --block-snippet: #6bc4dd;
     --block-code: #93a2b5;
     --block-annotation: #a29a8c;
 
@@ -95,6 +97,7 @@
   --block-action: #e0b352;
   --block-assertion: #f0876a;
   --block-logic: #a68df0;
+  --block-snippet: #6bc4dd;
   --block-code: #93a2b5;
   --block-annotation: #a29a8c;
 
