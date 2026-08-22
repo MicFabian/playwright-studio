@@ -31,6 +31,7 @@ async function main(): Promise<void> {
   const entries = (await fs.readdir(testsDir)).filter((file) => file.endsWith('.flow.json'));
   let blocking = 0;
   let migrated = 0;
+  let pending = 0;
 
   for (const entry of entries) {
     const filePath = path.join(testsDir, entry);
@@ -41,6 +42,7 @@ async function main(): Promise<void> {
       continue;
     }
 
+    pending += 1;
     const fallbackId = path.basename(entry, '.flow.json');
     const { document, notes } = migrateV1Flow(raw, fallbackId);
     const result = compileFlow(document);
@@ -71,8 +73,10 @@ async function main(): Promise<void> {
 
   if (write) {
     console.log(`Migrated ${migrated} flow file(s) to format version 2.`);
+  } else if (pending === 0) {
+    console.log('Nothing to migrate. Every flow file is already format version 2.');
   } else {
-    console.log(`Dry run. Re-run with --write to migrate ${entries.length} file(s).`);
+    console.log(`Dry run. Re-run with --write to migrate ${pending} file(s).`);
   }
 
   if (blocking > 0) {
