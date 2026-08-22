@@ -3,6 +3,12 @@ import { expect, test, type Page } from '@playwright/test';
 const library = (page: Page) => page.locator('.library');
 const canvasNodes = (page: Page) => page.locator('.react-flow__node');
 
+async function addBlock(page: Page, name: string) {
+  const before = await canvasNodes(page).count();
+  await library(page).getByRole('button', { name, exact: true }).click();
+  await expect(canvasNodes(page)).toHaveCount(before + 1);
+}
+
 async function openStudio(page: Page, baseURL: string) {
   const response = await page.request.get(`${baseURL}/api/launch-token`);
   const { token } = await response.json();
@@ -12,6 +18,13 @@ async function openStudio(page: Page, baseURL: string) {
 
 test.beforeEach(async ({ page, baseURL }) => {
   await openStudio(page, baseURL!);
+  await page.request.post(`${baseURL}/api/test-reset`);
+  await page.reload();
+  await expect(page.locator('.studio')).toBeVisible();
+  await expect(canvasNodes(page).first()).toBeVisible();
+  await expect(
+    library(page).getByRole('button', { name: 'Condition', exact: true }),
+  ).toBeEnabled();
 });
 
 test('loads the workspace from disk', async ({ page }) => {
@@ -30,16 +43,13 @@ test('switching flows loads a different document', async ({ page }) => {
 });
 
 test('adding a block marks the flow unsaved and updates the canvas', async ({ page }) => {
-  const before = await canvasNodes(page).count();
+  await addBlock(page, 'Click');
 
-  await library(page).getByRole('button', { name: 'Click', exact: true }).click();
-
-  await expect(canvasNodes(page)).toHaveCount(before + 1);
   await expect(page.locator('.topbar__badge')).toHaveText('Unsaved');
 });
 
 test('a nested condition generates real branch code', async ({ page }) => {
-  await library(page).getByRole('button', { name: 'Condition', exact: true }).click();
+  await addBlock(page, 'Condition');
   await page.locator('.step-node__slot', { hasText: 'then' }).click();
 
   await page.locator('.panel-tabs button', { hasText: 'Code' }).click();
@@ -50,7 +60,7 @@ test('a nested condition generates real branch code', async ({ page }) => {
 });
 
 test('an empty branch blocks the spec instead of emitting a comment', async ({ page }) => {
-  await library(page).getByRole('button', { name: 'Condition', exact: true }).click();
+  await addBlock(page, 'Condition');
   await page.locator('.panel-tabs button', { hasText: 'Code' }).click();
 
   await expect(page.locator('.diagnostics--error')).toContainText('empty-branch');
@@ -59,7 +69,7 @@ test('an empty branch blocks the spec instead of emitting a comment', async ({ p
 });
 
 test('the inspector edits a step and the code follows', async ({ page }) => {
-  await library(page).getByRole('button', { name: 'Fill input', exact: true }).click();
+  await addBlock(page, 'Fill input');
   await canvasNodes(page).last().click();
 
   const value = page.locator('.inspector-field', { hasText: 'Value' }).locator('input').first();
@@ -81,8 +91,7 @@ test('generated code prefers user-facing locators', async ({ page }) => {
 test('undo reverses an edit', async ({ page }) => {
   const before = await canvasNodes(page).count();
 
-  await library(page).getByRole('button', { name: 'Hover', exact: true }).click();
-  await expect(canvasNodes(page)).toHaveCount(before + 1);
+  await addBlock(page, 'Hover');
 
   await page.keyboard.press('ControlOrMeta+z');
   await expect(canvasNodes(page)).toHaveCount(before);

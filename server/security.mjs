@@ -184,9 +184,3 @@ export async function readLimitedBody(request) {
 
   return Buffer.concat(chunks).toString('utf8');
 }
-
-export const security = {
-  SESSION_COOKIE,
-  CSRF_HEADER,
-  MAX_BODY_BYTES,
-};

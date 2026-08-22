@@ -24,6 +24,8 @@ function createIsolatedWorkspace() {
   return workspace;
 }
 
+const seedRoot = createIsolatedWorkspace();
+
 const workspaceRoot = createIsolatedWorkspace();
 
 const port = 5310;
@@ -43,7 +45,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: `PORT=${port} STUDIO_E2E=1 STUDIO_WORKSPACE_ROOT=${workspaceRoot} node server.mjs`,
+    command: `PORT=${port} STUDIO_E2E=1 STUDIO_WORKSPACE_ROOT=${workspaceRoot} STUDIO_SEED_ROOT=${seedRoot} node server.mjs`,
     url: `${baseURL}/api/launch-token`,
     reuseExistingServer: false,
     timeout: 120_000,

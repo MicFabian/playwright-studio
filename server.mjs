@@ -557,6 +557,26 @@ async function handleApi(request, response) {
       return;
     }
 
+    if (
+      request.method === 'POST' &&
+      url.pathname === '/api/test-reset' &&
+      process.env.STUDIO_E2E === '1' &&
+      process.env.STUDIO_SEED_ROOT
+    ) {
+      const seedTests = path.join(process.env.STUDIO_SEED_ROOT, 'playwright-lowcode', 'tests');
+      const liveTests = path.join(rootDir, 'playwright-lowcode', 'tests');
+
+      await fs.rm(liveTests, { recursive: true, force: true });
+      await fs.mkdir(liveTests, { recursive: true });
+
+      for (const file of await fs.readdir(seedTests)) {
+        await fs.copyFile(path.join(seedTests, file), path.join(liveTests, file));
+      }
+
+      sendJson(response, 200, { reset: true });
+      return;
+    }
+
     authenticate(securityContext, request, {
       mutating: mutatingMethods.has(request.method),
     });
