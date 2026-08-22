@@ -1,6 +1,6 @@
 {
   "formatVersion": 2,
-  "name": "Playwright Low-Code Studio",
+  "name": "Playwright Studio",
   "paths": {
     "testsDir": "playwright-lowcode/tests",
     "snippetsDir": "playwright-lowcode/snippets",

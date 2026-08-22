@@ -35,7 +35,7 @@ let activePort = port;
 
 const defaultProject = {
   formatVersion: 2,
-  name: 'Playwright Low-Code Studio',
+  name: path.basename(rootDir) || 'Playwright Studio',
   paths: {
     testsDir: 'playwright-lowcode/tests',
     snippetsDir: 'playwright-lowcode/snippets',

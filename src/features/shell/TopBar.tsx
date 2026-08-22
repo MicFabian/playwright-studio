@@ -38,6 +38,8 @@ export function TopBar({
           className="topbar__name"
           value={flowName}
           aria-label="Flow name"
+          placeholder="No flow open"
+          disabled={!flowName}
           onChange={(event) => onRename(event.target.value)}
           onBlur={(event) => onRenameCommitted(event.target.value)}
           onKeyDown={(event) => {
@@ -50,11 +52,11 @@ export function TopBar({
       </div>
 
       <div className="topbar__actions">
-        <button type="button" onClick={onSave} disabled={saveState === 'saving'}>
+        <button type="button" onClick={onSave} disabled={saveState === 'saving' || !flowName}>
           <Save size={14} aria-hidden /> {SAVE_LABELS[saveState]}
         </button>
 
-        {running ? (
+        {!flowName ? null : running ? (
           <button type="button" className="danger" onClick={onCancel}>
             <Square size={14} aria-hidden /> Stop
           </button>

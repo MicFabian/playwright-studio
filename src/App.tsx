@@ -5,6 +5,7 @@ import { FlowCanvas } from './features/flow/FlowCanvas';
 import { StepInspector } from './features/flow/StepInspector';
 import { BlockLibrary } from './features/flow/BlockLibrary';
 import { WorkspaceExplorer } from './features/workspace/WorkspaceExplorer';
+import { EmptyWorkspace } from './features/workspace/EmptyWorkspace';
 import { RunPanel } from './features/run/RunPanel';
 import { ImportDialog } from './features/import/ImportDialog';
 import { CodePreview } from './features/flow/CodePreview';
@@ -339,9 +340,17 @@ export default function App() {
 
         <main className="studio__canvas">
           <ErrorBoundary label="The canvas" onReset={() => void hydrate(activeTestId ?? undefined)}>
-            <ReactFlowProvider>
-              <FlowCanvas />
-            </ReactFlowProvider>
+            {workspace && workspace.tests.length === 0 ? (
+              <EmptyWorkspace
+                workspaceName={workspace.project.name}
+                onCreate={() => void handleCreateTest()}
+                onImport={() => setImporting(true)}
+              />
+            ) : (
+              <ReactFlowProvider>
+                <FlowCanvas />
+              </ReactFlowProvider>
+            )}
           </ErrorBoundary>
         </main>
 

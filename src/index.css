@@ -1364,3 +1364,92 @@ button.danger {
   color: var(--text-3);
   font-size: 0.85rem;
 }
+
+.empty-workspace {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: var(--step-5);
+}
+
+.empty-workspace__card {
+  max-width: 30rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--step-3);
+}
+
+.empty-workspace__icon {
+  color: var(--accent);
+}
+
+.empty-workspace__card h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.empty-workspace__card p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.empty-workspace__card code {
+  font-family: var(--mono);
+  font-size: 0.82em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05em 0.3em;
+}
+
+.empty-workspace__actions {
+  display: flex;
+  gap: var(--step-2);
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: var(--step-1);
+}
+
+.empty-workspace__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--step-2);
+  background: var(--accent);
+  color: var(--accent-text);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: var(--step-2) var(--step-4);
+  font-size: 0.85rem;
+}
+
+.empty-workspace__actions button.secondary {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.empty-workspace__hints {
+  list-style: none;
+  margin: var(--step-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-1);
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+
+.empty-workspace__hints kbd {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+  margin: 0 1px;
+}
