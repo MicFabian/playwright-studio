@@ -61,9 +61,15 @@ export interface PlaywrightConfigInfo {
   diagnostics: { code: string; message: string }[];
 }
 
+export interface WorkspaceProblem {
+  filePath: string;
+  message: string;
+}
+
 export interface WorkspaceData {
   project: WorkspaceProject;
   playwrightConfig: PlaywrightConfigInfo;
+  problems?: WorkspaceProblem[];
   tests: StoredTestFlow[];
   snippets: SnippetItem[];
   git: GitState;

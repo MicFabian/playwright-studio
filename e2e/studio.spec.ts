@@ -112,6 +112,27 @@ test('undo reverses an edit', async ({ page }) => {
   await expect.poll(() => stepCount(page)).toBe(before);
 });
 
+test('a corrupt flow file does not stop the app from loading', async ({ page }) => {
+  await expect(page.locator('.explorer__list button').first()).toBeVisible();
+  await expect(page.locator('.explorer__problems')).toContainText('could not be read');
+
+  await page.locator('.explorer__problems summary').click();
+  await expect(page.locator('.explorer__problems')).toContainText('corrupt.flow.json');
+});
+
+test('edits are saved without pressing save', async ({ page }) => {
+  await addBlock(page, 'Hover');
+
+  await expect(page.locator('.topbar__badge')).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.locator('.topbar__actions')).toContainText('Saved');
+
+  await page.reload();
+  await expect(page.locator('.studio')).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => window.__studioStepCount?.() ?? 0))
+    .toBeGreaterThan(0);
+});
+
 test('renaming a flow renames its files', async ({ page }) => {
   const name = page.locator('.topbar__name');
 

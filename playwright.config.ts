@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { mkdtempSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -20,6 +20,12 @@ function createIsolatedWorkspace() {
       path.join(workspace, 'playwright-lowcode', 'tests', file),
     );
   }
+
+  // A deliberately unreadable file: the app must survive it, not refuse to start.
+  writeFileSync(
+    path.join(workspace, 'playwright-lowcode', 'tests', 'corrupt.flow.json'),
+    '{ not valid json',
+  );
 
   return workspace;
 }

@@ -174,6 +174,14 @@ async function readProject() {
 }
 
 function materializeTest(project, relativePath, raw) {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('This file does not contain a flow document.');
+  }
+
+  if (!isV1Flow(raw) && (raw.root == null || !Array.isArray(raw.root.steps))) {
+    throw new Error('This flow is missing its root step list.');
+  }
+
   const fallbackId = path.basename(relativePath, '.flow.json');
   const document = isV1Flow(raw)
     ? migrateV1Flow(raw, fallbackId).document
@@ -203,20 +211,39 @@ function materializeTest(project, relativePath, raw) {
   };
 }
 
+const workspaceProblems = [];
+
+function recordProblem(filePath, error) {
+  workspaceProblems.push({
+    filePath: filePath.replaceAll('\\', '/'),
+    message: error instanceof Error ? error.message : String(error),
+  });
+}
+
 async function loadTests(project) {
+  workspaceProblems.length = 0;
+
   const testsDir = path.join(rootDir, project.paths.testsDir);
   const files = await fs.readdir(testsDir);
-  const tests = await Promise.all(
+  const loaded = await Promise.all(
     files
       .filter((file) => file.endsWith('.flow.json'))
       .map(async (file) => {
         const relativePath = path.join(project.paths.testsDir, file);
-        const raw = await readJson(path.join(rootDir, relativePath));
-        return materializeTest(project, relativePath, raw);
+
+        try {
+          const raw = await readJson(path.join(rootDir, relativePath));
+          return materializeTest(project, relativePath, raw);
+        } catch (error) {
+          recordProblem(relativePath, error);
+          return null;
+        }
       }),
   );
 
-  return tests.sort((left, right) => left.name.localeCompare(right.name));
+  return loaded
+    .filter(Boolean)
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 async function loadSnippets(project) {
@@ -227,13 +254,20 @@ async function loadSnippets(project) {
       .filter((file) => file.endsWith('.snippet.json'))
       .map(async (file) => {
         const relativePath = path.join(project.paths.snippetsDir, file);
-        const raw = await readJson(path.join(rootDir, relativePath));
 
-        return materializeSnippet(relativePath, raw);
+        try {
+          const raw = await readJson(path.join(rootDir, relativePath));
+          return materializeSnippet(relativePath, raw);
+        } catch (error) {
+          recordProblem(relativePath, error);
+          return null;
+        }
       }),
   );
 
-  return snippets.sort((left, right) => left.name.localeCompare(right.name));
+  return snippets
+    .filter(Boolean)
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 const SNIPPET_PARAM_TYPES = new Set(['string', 'number', 'boolean']);
@@ -401,11 +435,15 @@ async function getWorkspace() {
   const project = await readProject();
   await ensureWorkspaceLayout(project);
 
+  const tests = await loadTests(project);
+  const snippets = await loadSnippets(project);
+
   return {
     project,
     playwrightConfig: await discoverPlaywrightConfig(project),
-    tests: await loadTests(project),
-    snippets: await loadSnippets(project),
+    tests,
+    snippets,
+    problems: [...workspaceProblems],
     git: await getGitStatus(),
   };
 }

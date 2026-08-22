@@ -1,4 +1,4 @@
-import { FileDown, FilePlus, FileText, Package } from 'lucide-react';
+import { AlertTriangle, FileDown, FilePlus, FileText, Package } from 'lucide-react';
 import type { WorkspaceData } from '../../types';
 import { ConfigBadge } from './ConfigBadge';
 
@@ -77,6 +77,26 @@ export function WorkspaceExplorer({
           </li>
         ))}
       </ul>
+
+      {workspace?.problems && workspace.problems.length > 0 ? (
+        <details className="explorer__problems">
+          <summary>
+            <AlertTriangle size={12} aria-hidden />
+            <span>
+              {workspace.problems.length} file
+              {workspace.problems.length === 1 ? '' : 's'} could not be read
+            </span>
+          </summary>
+          <ul>
+            {workspace.problems.map((problem) => (
+              <li key={problem.filePath}>
+                <code>{problem.filePath.split('/').pop()}</code>
+                <span>{problem.message}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       <ConfigBadge config={workspace?.playwrightConfig} />
 

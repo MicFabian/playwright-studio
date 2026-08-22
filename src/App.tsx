@@ -11,6 +11,7 @@ import { CodePreview } from './features/flow/CodePreview';
 import { DataPanel } from './features/flow/DataPanel';
 import { SnippetEditor } from './features/snippets/SnippetEditor';
 import { TopBar } from './features/shell/TopBar';
+import { ErrorBoundary } from './features/shell/ErrorBoundary';
 import { useEditorStore } from './stores/editorStore';
 import { useRunStore } from './stores/runStore';
 import {
@@ -98,19 +99,35 @@ export default function App() {
     setSaveState('saving');
 
     try {
-      await saveTest({
+      const { test } = await saveTest({
         id: activeTest.id,
         name: current.name,
         status: activeTest.status,
         document: current,
       });
-      markSaved();
+
+      // Only clear the dirty flag if nothing changed while the write was in
+      // flight; otherwise the newer edits would be treated as already saved.
+      if (useEditorStore.getState().document === current) {
+        markSaved();
+      }
+
       setSaveState('saved');
-      await hydrate(activeTest.id);
-    } catch {
+      setWorkspace((previous) =>
+        previous
+          ? {
+              ...previous,
+              tests: previous.tests.map((candidate) =>
+                candidate.id === test.id ? test : candidate,
+              ),
+            }
+          : previous,
+      );
+    } catch (error) {
       setSaveState('error');
+      setLoadError(error instanceof Error ? error.message : 'Save failed.');
     }
-  }, [activeTest, markSaved, hydrate]);
+  }, [activeTest, markSaved]);
 
   const handleRename = useCallback(
     async (name: string) => {
@@ -151,6 +168,30 @@ export default function App() {
     },
     [activeTest, handleSave],
   );
+
+  useEffect(() => {
+    if (!dirty || !activeTest) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void handleSave();
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [dirty, activeTest, handleSave]);
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (useEditorStore.getState().dirty) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -228,9 +269,11 @@ export default function App() {
         <BlockLibrary />
 
         <main className="studio__canvas">
-          <ReactFlowProvider>
-            <FlowCanvas />
-          </ReactFlowProvider>
+          <ErrorBoundary label="The canvas" onReset={() => void hydrate(activeTestId ?? undefined)}>
+            <ReactFlowProvider>
+              <FlowCanvas />
+            </ReactFlowProvider>
+          </ErrorBoundary>
         </main>
 
         <section className="studio__side">
@@ -263,8 +306,9 @@ export default function App() {
             ))}
           </nav>
 
-          {panel === 'inspector' ? <StepInspector snippets={workspace?.snippets ?? []} /> : null}
-          {panel === 'data' ? <DataPanel /> : null}
+          <ErrorBoundary label="This panel">
+            {panel === 'inspector' ? <StepInspector snippets={workspace?.snippets ?? []} /> : null}
+            {panel === 'data' ? <DataPanel /> : null}
           {panel === 'snippet' ? (
             <SnippetEditor
               snippet={workspace?.snippets.find((item) => item.id === activeSnippetId) ?? null}
@@ -277,7 +321,8 @@ export default function App() {
               playwrightConfig={workspace?.playwrightConfig}
             />
           ) : null}
-          {panel === 'run' ? <RunPanel /> : null}
+            {panel === 'run' ? <RunPanel /> : null}
+          </ErrorBoundary>
         </section>
       </div>
 
