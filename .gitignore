@@ -15,3 +15,4 @@ playwright-lowcode/runs/
 insertion-*.png
 packages/*/dist/
 .studio-runs/
+release/

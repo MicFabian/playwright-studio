@@ -23,6 +23,7 @@ import {
   saveTest,
 } from './lib/workspaceClient';
 import type { WorkspaceData } from './types';
+import { desktop, type DesktopCommand } from './lib/desktop';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -196,6 +197,28 @@ export default function App() {
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
+
+  useEffect(() => {
+    const host = desktop();
+
+    if (!host) {
+      return;
+    }
+
+    const commands: Record<DesktopCommand, () => void> = {
+      'new-flow': () => void handleCreateTest(),
+      save: () => void handleSave(),
+      import: () => setImporting(true),
+      undo,
+      redo,
+      palette: () => setPaletteOpen((open) => !open),
+      run: () => void handleRun(false),
+      'run-headed': () => void handleRun(true),
+      cancel: () => void useRunStore.getState().cancel(),
+    };
+
+    return host.onCommand((command) => commands[command]?.());
+  }, [handleCreateTest, handleSave, handleRun, undo, redo]);
 
   useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {

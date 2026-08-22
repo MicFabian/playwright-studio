@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -27,13 +28,14 @@ import {
 } from './packages/flow-import/dist/index.mjs';
 
 const execFileAsync = promisify(execFile);
-const installRoot = process.cwd();
+const installRoot = process.env.STUDIO_INSTALL_ROOT || process.cwd();
 const rootDir = process.env.STUDIO_WORKSPACE_ROOT || installRoot;
-const isProd = process.argv.includes('--prod');
+const isProd = process.argv.includes('--prod') || process.env.STUDIO_PROD === '1';
 const allowNetworkListen = process.argv.includes('--unsafe-network-listen');
 const port = Number(process.env.PORT || (isProd ? 4173 : 5173));
 const host = allowNetworkListen ? process.env.HOST || '0.0.0.0' : '127.0.0.1';
 const securityContext = createSecurityContext({ allowNetworkListen });
+let activePort = port;
 
 const defaultProject = {
   formatVersion: 2,
@@ -1077,19 +1079,14 @@ async function start() {
       }
     });
 
-    server.listen(port, host, () => {
-      if (allowNetworkListen) {
-        console.warn(
-          '\\n  WARNING: --unsafe-network-listen exposes this Studio beyond loopback.\\n' +
-            '  Anyone who can reach this port and obtain the launch token can execute\\n' +
-            '  repository code on this machine. Do not use on untrusted networks.\\n',
-        );
-      }
-
-      console.log(
-        `Playwright Low-Code Studio listening on ${launchUrl(securityContext, host, port)}`,
-      );
+    const boundPort = await new Promise((resolve) => {
+      server.listen(port, host, () => resolve(server.address().port));
     });
+
+    activePort = boundPort;
+    announce();
+
+    return { server, url: launchUrl(securityContext, host, boundPort), port: boundPort, host };
 
     return;
   }
@@ -1135,19 +1132,41 @@ async function start() {
     }
   });
 
-  server.listen(port, host, () => {
-    if (allowNetworkListen) {
-      console.warn(
-        '\\n  WARNING: --unsafe-network-listen exposes this Studio beyond loopback.\\n' +
-          '  Anyone who can reach this port and obtain the launch token can execute\\n' +
-          '  repository code on this machine. Do not use on untrusted networks.\\n',
-      );
-    }
-
-    console.log(
-      `Playwright Low-Code Studio listening on ${launchUrl(securityContext, host, port)}`,
-    );
+  const boundPort = await new Promise((resolve) => {
+    server.listen(port, host, () => resolve(server.address().port));
   });
+
+  activePort = boundPort;
+  announce();
+
+  return { server, url: launchUrl(securityContext, host, boundPort), port: boundPort, host };
 }
 
-start();
+function announce() {
+  if (allowNetworkListen) {
+    console.warn(
+      '\n  WARNING: --unsafe-network-listen exposes this Studio beyond loopback.\n' +
+        '  Anyone who can reach this port and obtain the launch token can execute\n' +
+        '  repository code on this machine. Do not use on untrusted networks.\n',
+    );
+  }
+
+  console.log(
+    `Playwright Low-Code Studio listening on ${launchUrl(securityContext, host, activePort)}`,
+  );
+}
+
+export async function startStudio() {
+  return start();
+}
+
+export function studioLaunchUrl() {
+  return launchUrl(securityContext, host, activePort);
+}
+
+const invokedDirectly =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  void start();
+}

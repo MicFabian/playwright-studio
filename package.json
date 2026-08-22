@@ -14,7 +14,10 @@
     "test:ui:headed": "playwright test --headed",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate": "vite-node scripts/migrate-workspace.ts"
+    "migrate": "vite-node scripts/migrate-workspace.ts",
+    "desktop": "electron .",
+    "desktop:build": "npm run build && electron-builder",
+    "desktop:dir": "npm run build && electron-builder --dir"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
@@ -31,6 +34,8 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.24.2",
     "jsdom": "^25.0.1",
     "ts-morph": "^24.0.0",
@@ -38,5 +43,41 @@
     "vite": "^6.0.1",
     "vite-node": "^2.1.9",
     "vitest": "^2.1.9"
+  },
+  "main": "electron/main.mjs",
+  "build": {
+    "appId": "dev.playwrightstudio.app",
+    "productName": "Playwright Studio",
+    "files": [
+      "electron/**",
+      "server/**",
+      "server.mjs",
+      "dist/**",
+      "packages/*/dist/**",
+      "packages/studio-runner/src/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Development"
+    }
   }
 }
