@@ -978,3 +978,125 @@ button.danger {
   padding-left: var(--step-3);
   color: var(--rail-text-dim);
 }
+
+.data {
+  overflow-y: auto;
+  padding: var(--step-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+  min-height: 0;
+}
+
+.data--empty {
+  color: var(--text-3);
+}
+
+.data__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--step-3);
+}
+
+.data__hint,
+.data__note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-2);
+}
+
+.data__note {
+  color: var(--text-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--step-2);
+}
+
+.data__actions {
+  display: flex;
+  gap: var(--step-1);
+  flex-shrink: 0;
+}
+
+.data__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px var(--step-2);
+  font-size: 0.75rem;
+}
+
+.data__actions button:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.data__scroll {
+  overflow-x: auto;
+}
+
+.data__table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.78rem;
+}
+
+.data__table th,
+.data__table td {
+  border: 1px solid var(--border);
+  padding: 0;
+}
+
+.data__table th {
+  background: var(--surface-2);
+  font-weight: 500;
+}
+
+.data__table input {
+  width: 100%;
+  min-width: 6.5rem;
+  background: transparent;
+  border: none;
+  padding: var(--step-1) var(--step-2);
+  font-size: 0.78rem;
+}
+
+.data__table th input {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+
+.data__table input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.data__remove {
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  padding: var(--step-1);
+  display: flex;
+}
+
+.data__remove:hover {
+  color: var(--danger);
+}
+
+.inspector-field__row {
+  display: flex;
+  gap: var(--step-1);
+}
+
+.inspector-field__row select {
+  flex: 0 0 auto;
+  width: 5.5rem;
+}
+
+.inspector-field__row input,
+.inspector-field__row select:last-child {
+  flex: 1;
+  min-width: 0;
+}

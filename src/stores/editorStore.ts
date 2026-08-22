@@ -36,6 +36,7 @@ interface EditorState {
   wrapStep: (stepId: string, kind: Extract<FlowStepKind, 'condition' | 'loop' | 'try'>) => void;
   moveNode: (stepId: string, position: { x: number; y: number }) => void;
   renameFlow: (name: string) => void;
+  setDataSet: (data: FlowDocument['data']) => void;
 
   undo: () => void;
   redo: () => void;
@@ -158,6 +159,22 @@ export const useEditorStore = create<EditorState>((set, get) => {
       if (document) {
         commit({ ...document, name });
       }
+    },
+
+    setDataSet: (data) => {
+      const { document } = get();
+
+      if (!document) {
+        return;
+      }
+
+      if (!data || data.cases.length === 0) {
+        const { data: _discarded, ...rest } = document;
+        commit(rest);
+        return;
+      }
+
+      commit({ ...document, data });
     },
 
     undo: () => {

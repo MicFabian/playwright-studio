@@ -379,6 +379,123 @@ describe('test options', () => {
   });
 });
 
+describe('data-driven tests', () => {
+  const loginSteps: FlowStep[] = [
+    { id: 'a', kind: 'navigate', url: { source: 'literal', value: '/login' } },
+    {
+      id: 'b',
+      kind: 'fill',
+      target: testId('email'),
+      value: { source: 'variable', name: 'email' },
+    },
+    {
+      id: 'c',
+      kind: 'assert',
+      target: testId('result'),
+      assertion: { type: 'containsText', text: { source: 'variable', name: 'expected' } },
+    },
+  ];
+
+  const dataset = {
+    columns: [{ name: 'email' }, { name: 'expected' }],
+    cases: [
+      { name: 'valid user', values: { email: 'qa@example.com', expected: 'Dashboard' } },
+      { name: 'blocked user', values: { email: 'blocked@example.com', expected: 'Suspended' } },
+    ],
+  };
+
+  it('emits one named test per row rather than hiding iteration in one test', () => {
+    const { source } = compile(loginSteps, { data: dataset });
+
+    expect(source).toContain('const cases = [');
+    expect(source).toContain('{ name: "valid user", email: "qa@example.com", expected: "Dashboard" },');
+    expect(source).toContain('for (const { name, email, expected } of cases) {');
+    expect(source).toContain('test("Sample flow" + " — " + name, async ({ page }) => {');
+  });
+
+  it('puts data columns in scope for the steps', () => {
+    const result = compile(loginSteps, { data: dataset });
+
+    expect(hasBlockingDiagnostics(result)).toBe(false);
+    expect(result.source).toContain('.fill(email);');
+    expect(result.source).toContain('toContainText(expected);');
+  });
+
+  it('does not leak data columns outside the generated test', () => {
+    const result = compile(
+      [
+        {
+          id: 'a',
+          kind: 'fill',
+          target: testId('x'),
+          value: { source: 'variable', name: 'notAColumn' },
+        },
+      ],
+      { data: dataset },
+    );
+
+    expect(
+      result.diagnostics.filter((diagnostic) => diagnostic.code === 'unknown-variable'),
+    ).not.toHaveLength(0);
+  });
+
+  it('falls back to a single test when there are no rows', () => {
+    const { source } = compile(loginSteps, { data: { columns: [{ name: 'email' }], cases: [] } });
+
+    expect(source).toContain('test("Sample flow", async ({ page }) => {');
+    expect(source).not.toContain('const cases = [');
+  });
+
+  it('rejects a column name that is not a valid identifier', () => {
+    const codes = compile(loginSteps, {
+      data: { columns: [{ name: 'e-mail' }], cases: [{ name: 'row', values: {} }] },
+    }).diagnostics.map((diagnostic) => diagnostic.code);
+
+    expect(codes).toContain('invalid-data-column');
+  });
+
+  it('rejects duplicate rows and unnamed rows', () => {
+    expect(
+      compile(loginSteps, {
+        data: {
+          columns: [{ name: 'email' }],
+          cases: [
+            { name: 'same', values: {} },
+            { name: 'same', values: {} },
+          ],
+        },
+      }).diagnostics.map((diagnostic) => diagnostic.code),
+    ).toContain('duplicate-data-case');
+
+    expect(
+      compile(loginSteps, {
+        data: { columns: [{ name: 'email' }], cases: [{ name: '  ', values: {} }] },
+      }).diagnostics.map((diagnostic) => diagnostic.code),
+    ).toContain('unnamed-data-case');
+  });
+
+  it('escapes row values rather than interpolating them', () => {
+    const { source } = compile(loginSteps, {
+      data: {
+        columns: [{ name: 'email' }, { name: 'expected' }],
+        cases: [{ name: 'quote "row"', values: { email: '"); evil(); ("', expected: 'x' } }],
+      },
+    });
+
+    expect(source).toContain('name: "quote \\"row\\""');
+    expect(source).toContain('email: "\\"); evil(); (\\""');
+  });
+
+  it('keeps tags and annotations on every generated case', () => {
+    const { source } = compile(loginSteps, {
+      data: dataset,
+      testOptions: { tags: ['@smoke'] },
+    });
+
+    expect(source).toContain('tag: ["@smoke"]');
+  });
+});
+
 describe('baseURL awareness', () => {
   const navigate = (url: string): FlowStep[] => [
     { id: 'a', kind: 'navigate', url: { source: 'literal', value: url } },

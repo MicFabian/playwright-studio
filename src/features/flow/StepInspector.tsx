@@ -54,6 +54,82 @@ function valueText(expr: ValueExpr | undefined): string {
   return expr.source === 'literal' ? expr.value : expr.name;
 }
 
+function ValueField({
+  label,
+  value,
+  columns,
+  hint,
+  onChange,
+}: {
+  label: string;
+  value: ValueExpr | undefined;
+  columns: string[];
+  hint?: string;
+  onChange: (next: ValueExpr) => void;
+}) {
+  const source = value?.source ?? 'literal';
+
+  return (
+    <div className="inspector-field">
+      <span className="inspector-field__label">{label}</span>
+
+      <div className="inspector-field__row">
+        <select
+          aria-label={`${label} source`}
+          value={source}
+          onChange={(event) => {
+            const next = event.target.value as ValueExpr['source'];
+
+            if (next === 'literal') {
+              onChange({ source: 'literal', value: valueText(value) });
+              return;
+            }
+
+            if (next === 'variable') {
+              onChange({ source: 'variable', name: columns[0] ?? valueText(value) });
+              return;
+            }
+
+            onChange({ source: 'env', name: valueText(value) || 'APP_PASSWORD' });
+          }}
+        >
+          <option value="literal">Text</option>
+          <option value="variable">Variable</option>
+          <option value="env">Env</option>
+        </select>
+
+        {source === 'variable' && columns.length > 0 ? (
+          <select
+            aria-label={label}
+            value={value?.source === 'variable' ? value.name : ''}
+            onChange={(event) => onChange({ source: 'variable', name: event.target.value })}
+          >
+            {columns.map((column) => (
+              <option key={column} value={column}>
+                {column}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            aria-label={label}
+            value={valueText(value)}
+            onChange={(event) =>
+              onChange(
+                source === 'literal'
+                  ? { source: 'literal', value: event.target.value }
+                  : { source, name: event.target.value },
+              )
+            }
+          />
+        )}
+      </div>
+
+      {hint ? <span className="inspector-field__hint">{hint}</span> : null}
+    </div>
+  );
+}
+
 function Field({
   label,
   children,
@@ -233,6 +309,7 @@ export function StepInspector() {
   }
 
   const definition = blockRegistry[step.kind];
+  const dataColumns = (document?.data?.columns ?? []).map((column) => column.name);
   const update = (next: Partial<FlowStep>) =>
     editStep(step.id, (current) => ({ ...current, ...next }) as FlowStep);
 
@@ -259,27 +336,22 @@ export function StepInspector() {
       ) : null}
 
       {step.kind === 'navigate' ? (
-        <Field label="URL">
-          <input
-            value={valueText(step.url)}
-            onChange={(event) =>
-              update({ url: { source: 'literal', value: event.target.value } } as Partial<FlowStep>)
-            }
-          />
-        </Field>
+        <ValueField
+          label="URL"
+          value={step.url}
+          columns={dataColumns}
+          onChange={(url) => update({ url } as Partial<FlowStep>)}
+        />
       ) : null}
 
       {step.kind === 'fill' || step.kind === 'selectOption' ? (
-        <Field label="Value">
-          <input
-            value={valueText(step.value)}
-            onChange={(event) =>
-              update({
-                value: { source: 'literal', value: event.target.value },
-              } as Partial<FlowStep>)
-            }
-          />
-        </Field>
+        <ValueField
+          label="Value"
+          value={step.value}
+          columns={dataColumns}
+          hint={dataColumns.length > 0 ? 'Pick a data column to run this per row.' : undefined}
+          onChange={(value) => update({ value } as Partial<FlowStep>)}
+        />
       ) : null}
 
       {step.kind === 'press' ? (
@@ -325,19 +397,14 @@ export function StepInspector() {
           </Field>
 
           {'text' in step.assertion ? (
-            <Field label="Expected text">
-              <input
-                value={valueText(step.assertion.text)}
-                onChange={(event) =>
-                  update({
-                    assertion: {
-                      ...step.assertion,
-                      text: { source: 'literal', value: event.target.value },
-                    },
-                  } as Partial<FlowStep>)
-                }
-              />
-            </Field>
+            <ValueField
+              label="Expected text"
+              value={step.assertion.text}
+              columns={dataColumns}
+              onChange={(text) =>
+                update({ assertion: { ...step.assertion, text } } as Partial<FlowStep>)
+              }
+            />
           ) : null}
 
           {'count' in step.assertion ? (

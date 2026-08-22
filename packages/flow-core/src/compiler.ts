@@ -657,6 +657,118 @@ class Compiler {
     sequence.steps.forEach((step) => this.emitStep(step));
   }
 
+  private emitTestBody(): void {
+    if (this.document.testOptions?.timeoutMs) {
+      this.emitter.push(`test.setTimeout(${Math.trunc(this.document.testOptions.timeoutMs)});`);
+    }
+
+    this.emitSequence(this.document.root);
+  }
+
+  private testOptionsArgument(): string {
+    const options: string[] = [];
+    const testOptions = this.document.testOptions;
+
+    if (testOptions?.tags?.length) {
+      options.push(`tag: [${testOptions.tags.map((tag) => quote(tag)).join(', ')}]`);
+    }
+
+    if (testOptions?.annotations?.length) {
+      const annotations = testOptions.annotations
+        .map((annotation) =>
+          annotation.description
+            ? `{ type: ${quote(annotation.type)}, description: ${quote(annotation.description)} }`
+            : `{ type: ${quote(annotation.type)} }`,
+        )
+        .join(', ');
+      options.push(`annotation: [${annotations}]`);
+    }
+
+    return options.length > 0 ? `, { ${options.join(', ')} }` : '';
+  }
+
+  private validateDataSet(): boolean {
+    const data = this.document.data;
+
+    if (!data || data.cases.length === 0) {
+      return false;
+    }
+
+    const seenColumns = new Set<string>();
+
+    for (const column of data.columns) {
+      if (!isValidIdentifier(column.name)) {
+        this.error(
+          'invalid-data-column',
+          `"${column.name}" is not a valid column name. Use a JavaScript identifier.`,
+        );
+        return false;
+      }
+
+      if (seenColumns.has(column.name)) {
+        this.error('duplicate-data-column', `Column "${column.name}" appears more than once.`);
+        return false;
+      }
+
+      seenColumns.add(column.name);
+    }
+
+    const seenCases = new Set<string>();
+
+    for (const dataCase of data.cases) {
+      if (!dataCase.name.trim()) {
+        this.error('unnamed-data-case', 'Every data row needs a name so its test can be found.');
+        return false;
+      }
+
+      if (seenCases.has(dataCase.name)) {
+        this.error('duplicate-data-case', `Two data rows are both named "${dataCase.name}".`);
+        return false;
+      }
+
+      seenCases.add(dataCase.name);
+    }
+
+    return true;
+  }
+
+  private emitDataDrivenTests(): void {
+    const data = this.document.data!;
+    const columns = data.columns.map((column) => column.name);
+
+    this.emitter.push('const cases = [');
+    this.emitter.indent();
+
+    data.cases.forEach((dataCase) => {
+      const entries = [
+        `name: ${quote(dataCase.name)}`,
+        ...columns.map((column) => `${column}: ${quote(dataCase.values[column] ?? '')}`),
+      ];
+      this.emitter.push(`{ ${entries.join(', ')} },`);
+    });
+
+    this.emitter.dedent();
+    this.emitter.push('];');
+    this.emitter.push('');
+
+    const destructured = columns.length > 0 ? `, ${columns.join(', ')}` : '';
+
+    this.emitter.push(`for (const { name${destructured} } of cases) {`);
+    this.emitter.indent();
+    this.emitter.push(
+      `test(${quote(this.document.name)} + " — " + name${this.testOptionsArgument()}, async ({ page }) => {`,
+    );
+    this.emitter.indent();
+
+    columns.forEach((column) => this.declaredVariables.add(column));
+    this.emitTestBody();
+    columns.forEach((column) => this.declaredVariables.delete(column));
+
+    this.emitter.dedent();
+    this.emitter.push('});');
+    this.emitter.dedent();
+    this.emitter.push('}');
+  }
   compile(): CompileResult {
     const { document } = this;
 
@@ -668,35 +780,18 @@ class Compiler {
 
     this.emitter.push('');
 
-    const options: string[] = [];
-
-    if (document.testOptions?.tags?.length) {
-      options.push(`tag: [${document.testOptions.tags.map((tag) => quote(tag)).join(', ')}]`);
+    if (document.data && document.data.cases.length > 0 && this.validateDataSet()) {
+      this.emitDataDrivenTests();
+    } else {
+      this.emitter.push(
+        `test(${quote(document.name)}${this.testOptionsArgument()}, async ({ page }) => {`,
+      );
+      this.emitter.indent();
+      this.emitTestBody();
+      this.emitter.dedent();
+      this.emitter.push('});');
     }
 
-    if (document.testOptions?.annotations?.length) {
-      const annotations = document.testOptions.annotations
-        .map((annotation) =>
-          annotation.description
-            ? `{ type: ${quote(annotation.type)}, description: ${quote(annotation.description)} }`
-            : `{ type: ${quote(annotation.type)} }`,
-        )
-        .join(', ');
-      options.push(`annotation: [${annotations}]`);
-    }
-
-    const optionsArg = options.length > 0 ? `, { ${options.join(', ')} }` : '';
-
-    this.emitter.push(`test(${quote(document.name)}${optionsArg}, async ({ page }) => {`);
-    this.emitter.indent();
-
-    if (document.testOptions?.timeoutMs) {
-      this.emitter.push(`test.setTimeout(${Math.trunc(document.testOptions.timeoutMs)});`);
-    }
-
-    this.emitSequence(document.root);
-    this.emitter.dedent();
-    this.emitter.push('});');
     this.emitter.push('');
 
     return {

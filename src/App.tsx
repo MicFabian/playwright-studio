@@ -8,6 +8,7 @@ import { WorkspaceExplorer } from './features/workspace/WorkspaceExplorer';
 import { RunPanel } from './features/run/RunPanel';
 import { ImportDialog } from './features/import/ImportDialog';
 import { CodePreview } from './features/flow/CodePreview';
+import { DataPanel } from './features/flow/DataPanel';
 import { TopBar } from './features/shell/TopBar';
 import { useEditorStore } from './stores/editorStore';
 import { useRunStore } from './stores/runStore';
@@ -22,7 +23,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [panel, setPanel] = useState<'inspector' | 'code' | 'run'>('inspector');
+  const [panel, setPanel] = useState<'inspector' | 'data' | 'code' | 'run'>('inspector');
   const [importing, setImporting] = useState(false);
 
   const document = useEditorStore((state) => state.document);
@@ -196,19 +197,26 @@ export default function App() {
 
         <section className="studio__side">
           <nav className="panel-tabs">
-            {(['inspector', 'code', 'run'] as const).map((tab) => (
+            {(['inspector', 'data', 'code', 'run'] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
                 className={panel === tab ? 'is-active' : ''}
                 onClick={() => setPanel(tab)}
               >
-                {tab === 'inspector' ? 'Inspector' : tab === 'code' ? 'Code' : 'Run'}
+                {tab === 'inspector'
+                  ? 'Inspector'
+                  : tab === 'data'
+                    ? 'Data'
+                    : tab === 'code'
+                      ? 'Code'
+                      : 'Run'}
               </button>
             ))}
           </nav>
 
           {panel === 'inspector' ? <StepInspector /> : null}
+          {panel === 'data' ? <DataPanel /> : null}
           {panel === 'code' ? <CodePreview /> : null}
           {panel === 'run' ? <RunPanel /> : null}
         </section>

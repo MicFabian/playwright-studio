@@ -210,6 +210,20 @@ export interface FlowLayout {
   collapsedScopes?: Record<string, boolean>;
 }
 
+export interface DataColumn {
+  name: string;
+}
+
+export interface DataCase {
+  name: string;
+  values: Record<string, string>;
+}
+
+export interface DataSet {
+  columns: DataColumn[];
+  cases: DataCase[];
+}
+
 export interface TestOptionsIR {
   tags?: string[];
   annotations?: { type: string; description?: string }[];
@@ -225,6 +239,7 @@ export interface FlowDocument {
   root: Sequence;
   layout: FlowLayout;
   testOptions?: TestOptionsIR;
+  data?: DataSet;
 }
 
 export type DiagnosticSeverity = 'error' | 'warning';
