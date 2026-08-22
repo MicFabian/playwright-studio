@@ -17,7 +17,7 @@ uses. If you delete Studio tomorrow, your tests keep working.
 
 ```text
 packages/flow-core       IR, compiler, block registry, AST commands, migration
-packages/flow-import     TypeScript AST importer for existing specs
+packages/flow-import     TypeScript AST importer and config reader
 packages/studio-runner   Subprocess runner and Playwright reporter
 server.mjs               Local API: workspace, runs, git, import
 src/                     React editor
@@ -74,6 +74,37 @@ tests/generated/*.spec.ts      generated specs, meant to be committed
 Git is the history layer. Saving writes JSON and regenerates the spec, so every
 change is reviewable in a diff.
 
+## Data-driven flows
+
+A flow can carry a data table. Each row becomes its own named test, so a
+failure names the case that failed rather than a row index inside one test:
+
+```ts
+const cases = [
+  { name: "valid user", email: "qa@example.com", expected: "Dashboard" },
+  { name: "blocked user", email: "blocked@example.com", expected: "Suspended" },
+];
+
+for (const { name, email, expected } of cases) {
+  test("Login path" + " — " + name, async ({ page }) => { /* ... */ });
+}
+```
+
+Columns are in scope as variables inside the test and out of scope outside it.
+Bind a step to one with the value source control in the inspector.
+
+## Snippets
+
+Snippets are reusable blocks with typed inputs and outputs, not opaque code
+blobs. A snippet declares its parameters with types and optional defaults, and
+declares what it returns. A `useSnippet` step binds arguments — literals, data
+columns, or environment values — and captures outputs into named variables that
+later steps can read.
+
+The compiler inlines the body inside a block scope, so snippet locals cannot
+leak into the flow, and reports a missing snippet, a missing required argument,
+or an output the snippet does not declare.
+
 ## Importing existing specs
 
 Studio parses real TypeScript rather than matching patterns. It reads the action
@@ -127,12 +158,21 @@ never executed — the generated spec contained a placeholder comment. Rebuildin
 them in the editor is deliberate: regenerating that comment would preserve a
 test that silently checked nothing.
 
+## Workspace configuration
+
+Studio reads your `playwright.config.ts` with the TypeScript AST and uses what
+it finds: `baseURL` shortens navigation steps to paths, `testIdAttribute` and
+`projects` are surfaced in the explorer, and generated specs import `test` and
+`expect` from the fixture module named in `project.json`. A config it cannot
+parse statically is reported rather than guessed at.
+
 ## Status
 
-Working: the compiler and both profiles, nested control flow, the subprocess
-runner with traces and live step streaming, run history with retention,
-cancellation, v1 migration, spec import, and the local security model.
+Working: the compiler and both profiles, nested control flow, data-driven
+flows, typed snippets, the subprocess runner with traces and live step
+streaming, run history with retention, cancellation, v1 migration, spec import,
+config discovery, and the local security model.
 
-Not built yet: data-driven runs from fixture tables, a snippet editor with typed
-inputs and outputs, and a Playwright config reader that surfaces existing
-projects and `baseURL` in the UI.
+Not built yet: reading data rows from an external CSV or JSON file rather than
+the in-app table, running a flow against a chosen Playwright project from the
+UI, and a visual diff for the generated spec before saving.
