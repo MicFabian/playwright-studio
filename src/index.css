@@ -1271,3 +1271,90 @@ button.danger {
   color: var(--rail-text);
   margin-bottom: 2px;
 }
+
+.palette {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, #000 45%, transparent);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  z-index: 50;
+}
+
+.palette__panel {
+  width: min(620px, 92vw);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+}
+
+.palette__input {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding: var(--step-3) var(--step-4);
+  font-size: 0.95rem;
+}
+
+.palette__input:focus-visible {
+  outline: none;
+}
+
+.palette__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--step-1);
+  overflow-y: auto;
+}
+
+.palette__list button {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr auto;
+  align-items: baseline;
+  gap: var(--step-3);
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  padding: var(--step-2) var(--step-3);
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.palette__list button.is-active {
+  background: var(--surface-2);
+}
+
+.palette__group {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.palette__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette__hint {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.palette__empty {
+  padding: var(--step-3) var(--step-4);
+  color: var(--text-3);
+  font-size: 0.85rem;
+}

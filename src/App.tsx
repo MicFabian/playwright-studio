@@ -12,6 +12,7 @@ import { DataPanel } from './features/flow/DataPanel';
 import { SnippetEditor } from './features/snippets/SnippetEditor';
 import { TopBar } from './features/shell/TopBar';
 import { ErrorBoundary } from './features/shell/ErrorBoundary';
+import { CommandPalette } from './features/shell/CommandPalette';
 import { useEditorStore } from './stores/editorStore';
 import { useRunStore } from './stores/runStore';
 import {
@@ -33,6 +34,7 @@ export default function App() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [panel, setPanel] = useState<'inspector' | 'data' | 'code' | 'run' | 'snippet'>('inspector');
   const [importing, setImporting] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [activeSnippetId, setActiveSnippetId] = useState<string | null>(null);
 
   const document = useEditorStore((state) => state.document);
@@ -174,12 +176,14 @@ export default function App() {
       return;
     }
 
+    // Keyed on the document too: a drag emits a change per frame, and without
+    // that dependency the debounce timer is only ever cleared, never fired.
     const timer = window.setTimeout(() => {
       void handleSave();
     }, 1200);
 
     return () => window.clearTimeout(timer);
-  }, [dirty, activeTest, handleSave]);
+  }, [dirty, document, activeTest, handleSave]);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -194,30 +198,65 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null;
+      const tag = element?.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || element?.isContentEditable;
+    };
+
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) {
+      const meta = event.metaKey || event.ctrlKey;
+
+      if (meta && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
         return;
       }
 
-      if (event.key === 's') {
+      if (meta && event.key === 's') {
         event.preventDefault();
         void handleSave();
+        return;
       }
 
-      if (event.key === 'z' && !event.shiftKey) {
+      if (meta && event.key.toLowerCase() === 'z' && !event.shiftKey) {
         event.preventDefault();
         undo();
+        return;
       }
 
-      if ((event.key === 'z' && event.shiftKey) || event.key === 'y') {
+      if (meta && ((event.key.toLowerCase() === 'z' && event.shiftKey) || event.key === 'y')) {
         event.preventDefault();
         redo();
+        return;
+      }
+
+      if (meta && event.key === 'Enter') {
+        event.preventDefault();
+        void handleRun(event.shiftKey);
+        return;
+      }
+
+      if (isTypingTarget(event.target)) {
+        return;
+      }
+
+      const selected = useEditorStore.getState().selectedStepId;
+
+      if ((event.key === 'Backspace' || event.key === 'Delete') && selected) {
+        event.preventDefault();
+        useEditorStore.getState().deleteStep(selected);
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        useEditorStore.getState().select(null);
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleSave, undo, redo]);
+  }, [handleSave, handleRun, undo, redo]);
 
   if (loadState === 'loading') {
     return <div className="boot">Loading workspace…</div>;
@@ -325,6 +364,25 @@ export default function App() {
           </ErrorBoundary>
         </section>
       </div>
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        tests={workspace?.tests ?? []}
+        onOpenTest={handleSelectTest}
+        actions={[
+          { label: 'Save flow', hint: 'Ctrl/Cmd S', run: () => void handleSave() },
+          { label: 'Run flow', hint: 'Ctrl/Cmd Enter', run: () => void handleRun(false) },
+          { label: 'Run headed', hint: 'Ctrl/Cmd Shift Enter', run: () => void handleRun(true) },
+          { label: 'New flow', run: () => void handleCreateTest() },
+          { label: 'Import a spec', run: () => setImporting(true) },
+          { label: 'Undo', hint: 'Ctrl/Cmd Z', run: undo },
+          { label: 'Redo', hint: 'Ctrl/Cmd Shift Z', run: redo },
+          { label: 'Show generated code', run: () => setPanel('code') },
+          { label: 'Show test data', run: () => setPanel('data') },
+          { label: 'Show run results', run: () => setPanel('run') },
+        ]}
+      />
 
       {importing ? (
         <ImportDialog

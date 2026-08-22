@@ -6,7 +6,9 @@ import {
   insertStep,
   locateStep,
   moveStep,
+  projectFlowToCanvas,
   removeStep,
+  resolveDropTarget,
   setPosition,
   updateStep,
   wrapInScope,
@@ -166,7 +168,32 @@ export const useEditorStore = create<EditorState>((set, get) => {
         return;
       }
 
-      set({ document: setPosition(document, stepId, position), dirty: true });
+      const projection = projectFlowToCanvas(document);
+      const target = resolveDropTarget(projection, stepId, position);
+      const current = locateStep(document, stepId);
+
+      const sameSequence =
+        target != null &&
+        current != null &&
+        target.parentId === current.parentId &&
+        target.slot === current.slot;
+
+      const unchangedIndex =
+        sameSequence && (target.index === current.index || target.index === current.index + 1);
+
+      if (!target || unchangedIndex) {
+        set({ document: setPosition(document, stepId, position), dirty: true });
+        return;
+      }
+
+      const reordered = moveStep(document, stepId, target);
+
+      set({
+        document: setPosition(reordered, stepId, position),
+        dirty: true,
+        past: [...get().past, document].slice(-HISTORY_LIMIT),
+        future: [],
+      });
     },
 
     renameFlow: (name) => {

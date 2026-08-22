@@ -127,6 +127,51 @@ export function projectFlowToCanvas(document: FlowDocument): CanvasProjection {
   return { nodes, edges };
 }
 
+export interface DropTarget {
+  parentId: string | null;
+  slot: ScopeSlot | null;
+  index: number;
+}
+
+/**
+ * Translates a pointer position on the canvas into the sequence position it
+ * represents, so a drag can be applied as an AST move rather than a coordinate
+ * change. Returns null when the drop would land on the dragged step itself.
+ */
+export function resolveDropTarget(
+  projection: CanvasProjection,
+  draggedId: string,
+  position: { x: number; y: number },
+): DropTarget | null {
+  const candidates = projection.nodes.filter((node) => node.id !== draggedId);
+
+  if (candidates.length === 0) {
+    return { parentId: null, slot: null, index: 0 };
+  }
+
+  let closest = candidates[0];
+  let closestDistance = Number.POSITIVE_INFINITY;
+
+  candidates.forEach((node) => {
+    const dx = node.position.x - position.x;
+    const dy = node.position.y - position.y;
+    const distance = dx * dx + dy * dy;
+
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closest = node;
+    }
+  });
+
+  const before = position.x < closest.position.x;
+
+  return {
+    parentId: closest.parentId,
+    slot: closest.slot,
+    index: before ? closest.index : closest.index + 1,
+  };
+}
+
 export function emptyScopeSlots(step: FlowStep): { slot: ScopeSlot; label: string }[] {
   if (step.kind === 'condition') {
     const slots: { slot: ScopeSlot; label: string }[] = [];
