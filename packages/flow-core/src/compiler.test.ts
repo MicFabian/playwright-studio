@@ -321,6 +321,51 @@ describe('extract binds variables for later steps', () => {
   });
 });
 
+describe('declaration hygiene', () => {
+  it('declares a reused variable once rather than emitting invalid duplicate lets', () => {
+    const { source } = compile([
+      { id: 'a', kind: 'extract', target: testId('x'), variable: 'value' },
+      { id: 'b', kind: 'extract', target: testId('y'), variable: 'value' },
+    ]);
+
+    expect(source.match(/let value;/g)).toHaveLength(1);
+    expect(source.match(/value = await page/g)).toHaveLength(2);
+  });
+
+  it('does not shadow a data column with a step declaration', () => {
+    const { source } = compile(
+      [{ id: 'a', kind: 'extract', target: testId('x'), variable: 'email' }],
+      {
+        data: {
+          columns: [{ name: 'email' }],
+          cases: [{ name: 'row', values: { email: 'qa@example.com' } }],
+        },
+      },
+    );
+
+    expect(source).toContain('for (const { name, email } of cases) {');
+    expect(source).not.toContain('let email;');
+    expect(source).toContain('email = await page.getByTestId("x").textContent();');
+  });
+
+  it('does not shadow a loop item with a step declaration', () => {
+    const { source } = compile([
+      {
+        id: 'loop',
+        kind: 'loop',
+        source: { source: 'literal', value: 'rows' },
+        itemName: 'row',
+        body: {
+          steps: [{ id: 'x', kind: 'extract', target: testId('cell'), variable: 'row' }],
+        },
+      },
+    ]);
+
+    expect(source).toContain('for (const row of "rows") {');
+    expect(source).not.toContain('let row;');
+  });
+});
+
 describe('profiles', () => {
   const steps: FlowStep[] = [
     { id: 'a', kind: 'navigate', url: { source: 'literal', value: 'https://example.com' } },
@@ -647,6 +692,50 @@ describe('baseURL awareness', () => {
     });
 
     expect(source).toContain('await page.goto("https://other.example.com/x");');
+  });
+
+  it('does not treat a lookalike host as the base origin', () => {
+    const { source } = compileFlow(doc(navigate('https://app.example.com.evil.test/steal')), {
+      baseURL: 'https://app.example.com',
+    });
+
+    expect(source).toContain('await page.goto("https://app.example.com.evil.test/steal");');
+  });
+
+  it('does not shorten a host that merely starts with the base host', () => {
+    const { source } = compileFlow(doc(navigate('https://app.example.commercial.test/x')), {
+      baseURL: 'https://app.example.com',
+    });
+
+    expect(source).toContain('await page.goto("https://app.example.commercial.test/x");');
+  });
+
+  it('respects path boundaries when baseURL carries a path', () => {
+    const shortened = compileFlow(doc(navigate('https://app.example.com/base/deep?q=1#f')), {
+      baseURL: 'https://app.example.com/base',
+    });
+    const untouched = compileFlow(doc(navigate('https://app.example.com/basement/x')), {
+      baseURL: 'https://app.example.com/base',
+    });
+
+    expect(shortened.source).toContain('await page.goto("/deep?q=1#f");');
+    expect(untouched.source).toContain('await page.goto("https://app.example.com/basement/x");');
+  });
+
+  it('does not shorten across a scheme change', () => {
+    const { source } = compileFlow(doc(navigate('http://app.example.com/login')), {
+      baseURL: 'https://app.example.com',
+    });
+
+    expect(source).toContain('await page.goto("http://app.example.com/login");');
+  });
+
+  it('leaves a malformed URL alone', () => {
+    const { source } = compileFlow(doc(navigate('not a url')), {
+      baseURL: 'https://app.example.com',
+    });
+
+    expect(source).toContain('await page.goto("not a url");');
   });
 
   it('keeps absolute URLs when no baseURL is configured', () => {

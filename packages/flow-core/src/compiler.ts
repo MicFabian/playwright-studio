@@ -133,6 +133,8 @@ class Compiler {
 
   private readonly seenStepIds = new Set<string>();
 
+  private readonly hoistedNames = new Set<string>();
+
   constructor(
     private readonly document: FlowDocument,
     private readonly profile: CompileProfile,
@@ -248,12 +250,38 @@ class Compiler {
   }
 
   private navigationUrl(step: NavigateStep): string {
-    if (this.baseURL && step.url.source === 'literal' && step.url.value.startsWith(this.baseURL)) {
-      const relative = step.url.value.slice(this.baseURL.length);
-      return quote(relative.startsWith('/') ? relative : `/${relative}`);
+    const relative = this.relativeToBaseUrl(step.url);
+    return relative == null ? this.value(step.url, step.id) : quote(relative);
+  }
+
+  private relativeToBaseUrl(url: ValueExpr): string | null {
+    if (!this.baseURL || url.source !== 'literal') {
+      return null;
     }
 
-    return this.value(step.url, step.id);
+    let base: URL;
+    let target: URL;
+
+    try {
+      base = new URL(this.baseURL);
+      target = new URL(url.value);
+    } catch {
+      return null;
+    }
+
+    if (base.origin !== target.origin) {
+      return null;
+    }
+
+    const basePath = base.pathname.replace(/\/$/, '');
+    const targetPath = target.pathname;
+
+    if (basePath && targetPath !== basePath && !targetPath.startsWith(`${basePath}/`)) {
+      return null;
+    }
+
+    const remainder = `${targetPath.slice(basePath.length)}${target.search}${target.hash}`;
+    return remainder.startsWith('/') ? remainder : `/${remainder}`;
   }
 
   private literalForType(type: 'string' | 'number' | 'boolean', raw: string): string {
@@ -698,8 +726,10 @@ class Compiler {
         this.emitter.push(`for (const ${loop.itemName} of ${this.value(loop.source, step.id)}) {`);
         this.emitter.indent();
         this.declaredVariables.add(loop.itemName);
+        this.hoistedNames.add(loop.itemName);
         this.emitSequence(loop.body);
         this.declaredVariables.delete(loop.itemName);
+        this.hoistedNames.delete(loop.itemName);
         this.emitter.dedent();
         this.emitter.push('}');
         return;
@@ -761,7 +791,14 @@ class Compiler {
 
     const hoisted = wrapped ? this.hoistedVariables(step) : [];
 
-    hoisted.forEach((name) => this.emitter.push(`let ${name};`));
+    hoisted.forEach((name) => {
+      if (this.hoistedNames.has(name) || this.declaredVariables.has(name)) {
+        return;
+      }
+
+      this.hoistedNames.add(name);
+      this.emitter.push(`let ${name};`);
+    });
 
     if (wrapped) {
       this.emitter.push(`await test.step(${quote(title)}, async () => {`);
@@ -892,9 +929,17 @@ class Compiler {
     );
     this.emitter.indent();
 
-    columns.forEach((column) => this.declaredVariables.add(column));
+    columns.forEach((column) => {
+      this.declaredVariables.add(column);
+      this.hoistedNames.add(column);
+    });
+
     this.emitTestBody();
-    columns.forEach((column) => this.declaredVariables.delete(column));
+
+    columns.forEach((column) => {
+      this.declaredVariables.delete(column);
+      this.hoistedNames.delete(column);
+    });
 
     this.emitter.dedent();
     this.emitter.push('});');
