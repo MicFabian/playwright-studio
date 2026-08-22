@@ -185,6 +185,11 @@ flows, typed snippets, the subprocess runner with traces and live step
 streaming, run history with retention, cancellation, v1 migration, spec import,
 config discovery, and the local security model.
 
+Runs as a desktop app with native menus, and every push runs formatting, lint,
+build, unit tests, browser tests, and a check that the committed generated specs
+still pass. A version tag builds installers for macOS, Windows, and Linux.
+
 Not built yet: reading data rows from an external CSV or JSON file rather than
 the in-app table, running a flow against a chosen Playwright project from the
-UI, and a visual diff for the generated spec before saving.
+UI, a visual diff for the generated spec before saving, and auto-update — the
+installers are unsigned and not notarised, so macOS warns on first open.
