@@ -762,3 +762,153 @@ button.danger {
   width: 7px;
   height: 7px;
 }
+
+.explorer__head-actions {
+  display: flex;
+  gap: var(--step-1);
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, #000 55%, transparent);
+  display: grid;
+  place-items: center;
+  padding: var(--step-5);
+  z-index: 40;
+}
+
+.modal__panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-2);
+  width: min(720px, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+  padding: var(--step-4);
+}
+
+.modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal__head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.modal__head button {
+  background: transparent;
+  border: none;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--text-3);
+}
+
+.modal__hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+
+.modal__source {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--step-3);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  resize: vertical;
+}
+
+.modal__results {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-2);
+  min-height: 0;
+}
+
+.modal__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--step-2);
+}
+
+.modal__actions button {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--step-1) var(--step-3);
+  font-size: 0.83rem;
+}
+
+.modal__actions button:last-child {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: transparent;
+}
+
+.import-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--step-3);
+  background: var(--surface-2);
+}
+
+.import-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+}
+
+.import-card__name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+
+.import-card__badge {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  padding: 0 var(--step-2);
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.import-card__badge--structured {
+  color: var(--success);
+}
+
+.import-card__badge--mixed {
+  color: var(--warning);
+}
+
+.import-card__badge--opaque {
+  color: var(--danger);
+}
+
+.import-card__meta {
+  margin: var(--step-2) 0 0;
+  font-size: 0.78rem;
+  color: var(--text-2);
+}
+
+.import-card__diagnostics {
+  margin: var(--step-2) 0 0;
+  padding-left: var(--step-4);
+  font-size: 0.74rem;
+  color: var(--text-3);
+}

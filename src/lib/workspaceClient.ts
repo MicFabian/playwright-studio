@@ -195,3 +195,33 @@ export function streamRunEvents(
 
   return () => source.close();
 }
+
+export interface ImportedTestPreview {
+  name: string;
+  fidelity: 'structured' | 'mixed' | 'opaque';
+  structuredSteps: number;
+  opaqueSteps: number;
+  diagnostics: { severity: string; code: string; message: string; line: number }[];
+  document: FlowDocument;
+  preview: string;
+}
+
+export interface ImportPreview {
+  scaffold: string[];
+  diagnostics: { severity: string; code: string; message: string; line: number }[];
+  tests: ImportedTestPreview[];
+}
+
+export function previewImport(source: string, fileName?: string) {
+  return jsonRequest<ImportPreview>('/api/import/preview', {
+    method: 'POST',
+    body: { source, fileName },
+  });
+}
+
+export function adoptImport(documents: FlowDocument[]) {
+  return jsonRequest<{ tests: StoredTestFlow[] }>('/api/import/adopt', {
+    method: 'POST',
+    body: { documents },
+  });
+}

@@ -1,4 +1,4 @@
-import { FilePlus, FileText } from 'lucide-react';
+import { FileDown, FilePlus, FileText } from 'lucide-react';
 import type { WorkspaceData } from '../../types';
 
 interface WorkspaceExplorerProps {
@@ -6,6 +6,7 @@ interface WorkspaceExplorerProps {
   activeTestId: string | null;
   onSelect: (testId: string) => void;
   onCreate: () => void;
+  onImport: () => void;
 }
 
 export function WorkspaceExplorer({
@@ -13,14 +14,20 @@ export function WorkspaceExplorer({
   activeTestId,
   onSelect,
   onCreate,
+  onImport,
 }: WorkspaceExplorerProps) {
   return (
     <nav className="explorer" aria-label="Flows">
       <header className="explorer__head">
         <h2>Flows</h2>
-        <button type="button" onClick={onCreate} aria-label="New flow">
-          <FilePlus size={14} aria-hidden />
-        </button>
+        <span className="explorer__head-actions">
+          <button type="button" onClick={onImport} aria-label="Import spec" title="Import a spec">
+            <FileDown size={14} aria-hidden />
+          </button>
+          <button type="button" onClick={onCreate} aria-label="New flow" title="New flow">
+            <FilePlus size={14} aria-hidden />
+          </button>
+        </span>
       </header>
 
       <ul className="explorer__list">

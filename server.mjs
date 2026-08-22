@@ -21,6 +21,7 @@ import {
   migrateV1Flow,
 } from './packages/flow-core/dist/index.mjs';
 import { RunManager } from './packages/studio-runner/src/run-manager.mjs';
+import { importSpecSource } from './packages/flow-import/dist/index.mjs';
 
 const execFileAsync = promisify(execFile);
 const rootDir = process.cwd();
@@ -678,6 +679,61 @@ async function handleApi(request, response) {
         throw createHttpError(404, 'Artifact not found');
       }
 
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/import/preview') {
+      const body = await parseBody(request);
+      const source = String(body?.source || '');
+
+      if (!source.trim()) {
+        throw createHttpError(400, 'Paste or upload a spec file to import.');
+      }
+
+      const result = importSpecSource(source, String(body?.fileName || 'imported.spec.ts'));
+
+      sendJson(response, 200, {
+        scaffold: result.scaffold,
+        diagnostics: result.diagnostics,
+        tests: result.tests.map((test) => ({
+          name: test.document.name,
+          fidelity: test.fidelity,
+          structuredSteps: test.structuredSteps,
+          opaqueSteps: test.opaqueSteps,
+          diagnostics: test.diagnostics,
+          document: test.document,
+          preview: compileFlow(test.document).source,
+        })),
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/import/adopt') {
+      const body = await parseBody(request);
+      const documents = Array.isArray(body?.documents) ? body.documents : [];
+
+      if (documents.length === 0) {
+        throw createHttpError(400, 'Select at least one imported test to adopt.');
+      }
+
+      const created = [];
+
+      for (const document of documents) {
+        created.push(
+          await persistTest(
+            project,
+            {
+              id: document.id,
+              name: document.name,
+              status: 'draft',
+              document,
+            },
+            document.id,
+          ),
+        );
+      }
+
+      sendJson(response, 201, { tests: created, git: await getGitStatus() });
       return;
     }
 

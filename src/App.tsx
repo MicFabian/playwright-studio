@@ -6,6 +6,7 @@ import { StepInspector } from './features/flow/StepInspector';
 import { BlockLibrary } from './features/flow/BlockLibrary';
 import { WorkspaceExplorer } from './features/workspace/WorkspaceExplorer';
 import { RunPanel } from './features/run/RunPanel';
+import { ImportDialog } from './features/import/ImportDialog';
 import { CodePreview } from './features/flow/CodePreview';
 import { TopBar } from './features/shell/TopBar';
 import { useEditorStore } from './stores/editorStore';
@@ -22,6 +23,7 @@ export default function App() {
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [panel, setPanel] = useState<'inspector' | 'code' | 'run'>('inspector');
+  const [importing, setImporting] = useState(false);
 
   const document = useEditorStore((state) => state.document);
   const dirty = useEditorStore((state) => state.dirty);
@@ -181,6 +183,7 @@ export default function App() {
           activeTestId={activeTestId}
           onSelect={handleSelectTest}
           onCreate={handleCreateTest}
+          onImport={() => setImporting(true)}
         />
 
         <BlockLibrary />
@@ -210,6 +213,16 @@ export default function App() {
           {panel === 'run' ? <RunPanel /> : null}
         </section>
       </div>
+
+      {importing ? (
+        <ImportDialog
+          onClose={() => setImporting(false)}
+          onAdopted={(testId) => {
+            setImporting(false);
+            void hydrate(testId);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
