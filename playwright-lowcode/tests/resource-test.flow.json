@@ -1,0 +1,13 @@
+{
+  "formatVersion": 2,
+  "id": "resource-test",
+  "name": "resource-test",
+  "status": "draft",
+  "updatedAt": "2026-08-22T19:51:50.189Z",
+  "root": {
+    "steps": []
+  },
+  "layout": {
+    "positions": {}
+  }
+}

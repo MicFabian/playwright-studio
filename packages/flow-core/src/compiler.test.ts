@@ -321,6 +321,90 @@ describe('extract binds variables for later steps', () => {
   });
 });
 
+describe('malformed input is a diagnostic, never a crash or a broken file', () => {
+  it('rejects custom code with unbalanced brackets instead of corrupting the file', () => {
+    const result = compile([{ id: 'a', kind: 'code', code: 'if (true) {' }]);
+    const source = result.source;
+
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain('unbalanced-code');
+    expect((source.match(/\{/g) ?? []).length).toBe((source.match(/\}/g) ?? []).length);
+  });
+
+  it('accepts code whose brackets are balanced inside strings and comments', () => {
+    const result = compile([
+      {
+        id: 'a',
+        kind: 'code',
+        code: [
+          'const text = "a { b";',
+          "const other = 'c } d';",
+          'const tpl = `e { f`;',
+          '// trailing { comment',
+          'await page.waitForTimeout(1);',
+        ].join('\n'),
+      },
+    ]);
+
+    expect(
+      result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error'),
+    ).toHaveLength(0);
+  });
+
+  it('does not crash on a call step missing its arguments', () => {
+    expect(() =>
+      compile([{ id: 'a', kind: 'call', target: 'helper' } as unknown as FlowStep]),
+    ).not.toThrow();
+  });
+
+  it('keeps a comment on one line and cannot close a block comment', () => {
+    const { source } = compile([
+      { id: 'a', kind: 'comment', text: 'ends a block */ and\nspans lines' },
+    ]);
+
+    const commentLines = source.split('\n').filter((line) => line.trim().startsWith('//'));
+
+    expect(commentLines).toHaveLength(2);
+    expect(source).not.toContain('*/');
+  });
+});
+
+describe('branch and loop variables stay readable afterwards', () => {
+  it('declares a variable published inside a branch at the top of the test', () => {
+    const result = compile([
+      {
+        id: 'cond',
+        kind: 'condition',
+        predicate: { type: 'expression', code: 'true' },
+        then: { steps: [{ id: 'x', kind: 'extract', target: testId('v'), variable: 'seen' }] },
+      },
+      { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'seen' } },
+    ]);
+
+    const lines = result.source.split('\n').map((line) => line.trim());
+
+    expect(hasBlockingDiagnostics(result)).toBe(false);
+    expect(lines.indexOf('let seen;')).toBeLessThan(lines.indexOf('if (true) {'));
+    expect(result.source).toContain('.fill(seen);');
+  });
+
+  it('declares a variable published inside a loop body once, outside the loop', () => {
+    const result = compile([
+      {
+        id: 'loop',
+        kind: 'loop',
+        source: { source: 'literal', value: 'rows' },
+        itemName: 'row',
+        body: { steps: [{ id: 'x', kind: 'extract', target: testId('v'), variable: 'last' }] },
+      },
+      { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'last' } },
+    ]);
+
+    expect(hasBlockingDiagnostics(result)).toBe(false);
+    expect(result.source.match(/let last;/g)).toHaveLength(1);
+    expect(result.source).not.toContain('let row;');
+  });
+});
+
 describe('declaration hygiene', () => {
   it('declares a reused variable once rather than emitting invalid duplicate lets', () => {
     const { source } = compile([

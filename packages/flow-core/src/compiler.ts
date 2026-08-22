@@ -29,6 +29,7 @@ import {
   type AssertPageStep,
   type SnippetDefinition,
   type UseSnippetStep,
+  childSequences,
 } from './ir';
 
 export type CompileProfile = 'commit' | 'studio-run';
@@ -86,6 +87,100 @@ const RESERVED_IDENTIFIERS = new Set([
 
 function quote(value: string): string {
   return JSON.stringify(value);
+}
+
+export function isBalanced(source: string): boolean {
+  const stack: string[] = [];
+  const pairs: Record<string, string> = { ')': '(', ']': '[', '}': '{' };
+
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+    const previous = source[index - 1];
+    const escaped = previous === '\\' && source[index - 2] !== '\\';
+
+    if (inLineComment) {
+      if (char === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (inSingle) {
+      if (char === "'" && !escaped) {
+        inSingle = false;
+      }
+      continue;
+    }
+
+    if (inDouble) {
+      if (char === '"' && !escaped) {
+        inDouble = false;
+      }
+      continue;
+    }
+
+    if (inTemplate) {
+      if (char === '`' && !escaped) {
+        inTemplate = false;
+      }
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+
+    if (char === "'") {
+      inSingle = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inDouble = true;
+      continue;
+    }
+
+    if (char === '`') {
+      inTemplate = true;
+      continue;
+    }
+
+    if (char === '(' || char === '[' || char === '{') {
+      stack.push(char);
+      continue;
+    }
+
+    if (char === ')' || char === ']' || char === '}') {
+      if (stack.pop() !== pairs[char]) {
+        return false;
+      }
+    }
+  }
+
+  return stack.length === 0 && !inSingle && !inDouble && !inTemplate && !inBlockComment;
 }
 
 export function isValidIdentifier(candidate: string): boolean {
@@ -369,6 +464,33 @@ class Compiler {
     }
   }
 
+  private boundInSequence(sequence: Sequence, into: Set<string>): void {
+    sequence.steps.forEach((step) => {
+      if (step.kind === 'loop') {
+        into.add(step.itemName);
+      }
+
+      if (step.kind === 'try' && step.catch) {
+        into.add(step.catch.errorName);
+      }
+
+      if (step.kind === 'useSnippet') {
+        const snippet = this.snippets.get(step.snippetId);
+        snippet?.params.forEach((param) => into.add(param.name));
+        snippet?.outputs.forEach((output) => into.add(output.name));
+      }
+
+      childSequences(step).forEach((child) => this.boundInSequence(child, into));
+    });
+  }
+
+  private publishedInSequence(sequence: Sequence, into: Set<string>): void {
+    sequence.steps.forEach((step) => {
+      this.hoistedVariables(step).forEach((name) => into.add(name));
+      childSequences(step).forEach((child) => this.publishedInSequence(child, into));
+    });
+  }
+
   private hoistedVariables(step: FlowStep): string[] {
     if (step.kind === 'extract') {
       return isValidIdentifier(step.variable) ? [step.variable] : [];
@@ -548,7 +670,7 @@ class Compiler {
           return;
         }
 
-        const args = call.args.map((arg) => this.value(arg, step.id)).join(', ');
+        const args = (call.args ?? []).map((arg) => this.value(arg, step.id)).join(', ');
         const invocation = `await ${call.target}(${args});`;
 
         if (call.assignTo) {
@@ -661,10 +783,19 @@ class Compiler {
       }
       case 'code': {
         const codeStep = step as CodeStep;
-        const code = codeStep.code.trimEnd();
+        const code = String(codeStep.code ?? '').trimEnd();
 
         if (!code.trim()) {
           this.warn('empty-code', 'Custom code step is empty.', step.id);
+          return;
+        }
+
+        if (!isBalanced(code)) {
+          this.error(
+            'unbalanced-code',
+            'Custom code has unbalanced brackets, so it would break the generated file.',
+            step.id,
+          );
           return;
         }
 
@@ -673,9 +804,9 @@ class Compiler {
       }
       case 'comment': {
         const comment = step as CommentStep;
-        comment.text
-          .split('\n')
-          .forEach((line) => this.emitter.push(`// ${line.trim()}`));
+        String(comment.text ?? '')
+          .split(/\r?\n/)
+          .forEach((line) => this.emitter.push(`// ${line.trim().replace(/\*\//g, '*\\/')}`));
         return;
       }
       default:
@@ -789,17 +920,6 @@ class Compiler {
         ? `[${step.id}] ${this.stepLabel(step)}`
         : this.stepLabel(step);
 
-    const hoisted = wrapped ? this.hoistedVariables(step) : [];
-
-    hoisted.forEach((name) => {
-      if (this.hoistedNames.has(name) || this.declaredVariables.has(name)) {
-        return;
-      }
-
-      this.hoistedNames.add(name);
-      this.emitter.push(`let ${name};`);
-    });
-
     if (wrapped) {
       this.emitter.push(`await test.step(${quote(title)}, async () => {`);
       this.emitter.indent();
@@ -831,7 +951,25 @@ class Compiler {
       this.emitter.push(`test.setTimeout(${Math.trunc(this.document.testOptions.timeoutMs)});`);
     }
 
+    const published = new Set<string>();
+    this.publishedInSequence(this.document.root, published);
+
+    const bound = new Set<string>();
+    this.boundInSequence(this.document.root, bound);
+
+    const declarations = [...published].filter(
+      (name) =>
+        !bound.has(name) && !this.hoistedNames.has(name) && !this.declaredVariables.has(name),
+    );
+
+    declarations.forEach((name) => {
+      this.hoistedNames.add(name);
+      this.emitter.push(`let ${name};`);
+    });
+
     this.emitSequence(this.document.root);
+
+    declarations.forEach((name) => this.hoistedNames.delete(name));
   }
 
   private testOptionsArgument(): string {

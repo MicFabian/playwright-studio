@@ -1,0 +1,13 @@
+{
+  "formatVersion": 2,
+  "id": "test-sse",
+  "name": "test-sse",
+  "status": "draft",
+  "updatedAt": "2026-08-22T19:49:24.266Z",
+  "root": {
+    "steps": []
+  },
+  "layout": {
+    "positions": {}
+  }
+}
