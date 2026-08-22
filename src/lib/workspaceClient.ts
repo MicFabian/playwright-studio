@@ -1,11 +1,62 @@
-import type { FlowEdge, FlowNode, GitState, StoredTestFlow, TestRun, WorkspaceData } from '../types';
+import type { GitState, StoredTestFlow, TestRun, WorkspaceData } from '../types';
 
 type JsonRequestInit = Omit<RequestInit, 'body'> & {
   body?: unknown;
 };
 
+let csrfToken: string | null = null;
+let sessionReady: Promise<void> | null = null;
+
+function readLaunchToken() {
+  const hash = window.location.hash.replace(/^#/, '');
+  return new URLSearchParams(hash).get('token');
+}
+
+async function establishSession(): Promise<void> {
+  const launchToken = readLaunchToken();
+
+  if (!launchToken) {
+    throw new Error(
+      'Studio was opened without a launch token. Restart the dev server and use the printed URL.',
+    );
+  }
+
+  const response = await fetch(`/api/session?token=${encodeURIComponent(launchToken)}`, {
+    method: 'POST',
+    credentials: 'same-origin',
+  });
+
+  if (!response.ok) {
+    throw new Error('Studio session could not be established.');
+  }
+
+  const { csrfToken: issued } = (await response.json()) as { csrfToken: string };
+  csrfToken = issued;
+
+  window.history.replaceState(null, '', window.location.pathname + window.location.search);
+}
+
+function ensureSession(): Promise<void> {
+  if (!sessionReady) {
+    sessionReady = establishSession().catch((error) => {
+      sessionReady = null;
+      throw error;
+    });
+  }
+
+  return sessionReady;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  await ensureSession();
+
+  const headers = new Headers(init?.headers);
+
+  if (csrfToken && init?.method && init.method !== 'GET') {
+    headers.set('x-studio-csrf', csrfToken);
+  }
+
+  const response = await fetch(path, { ...init, headers, credentials: 'same-origin' });
 
   if (!response.ok) {
     const body = await response.text();
@@ -103,8 +154,6 @@ export function commitWorkspace(message: string) {
 export function startTestRun(input: {
   testId: string;
   testName: string;
-  nodes: FlowNode[];
-  edges: FlowEdge[];
   liveMode?: boolean;
   slowMoMs?: number;
 }) {

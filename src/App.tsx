@@ -1631,11 +1631,14 @@ function AppShell() {
     setRunError(null);
 
     try {
+      if (activeTest) {
+        await persistTest({ ...activeTest, steps: nodes.length, nodes, edges });
+        await hydrateWorkspace(activeTest.id);
+      }
+
       const { run } = await startTestRun({
         testId: activeTestId,
         testName: activeTest?.name || 'Untitled flow',
-        nodes,
-        edges,
         liveMode: liveRunMode,
         slowMoMs: liveRunMode ? 180 : 0,
       });

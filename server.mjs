@@ -5,12 +5,21 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { createServer as createViteServer } from 'vite';
+import {
+  authenticate,
+  createSecurityContext,
+  handleSessionExchange,
+  launchUrl,
+  readLimitedBody,
+} from './server/security.mjs';
 
 const execFileAsync = promisify(execFile);
 const rootDir = process.cwd();
 const isProd = process.argv.includes('--prod');
+const allowNetworkListen = process.argv.includes('--unsafe-network-listen');
 const port = Number(process.env.PORT || (isProd ? 4173 : 5173));
-const host = process.env.HOST || '127.0.0.1';
+const host = allowNetworkListen ? process.env.HOST || '0.0.0.0' : '127.0.0.1';
+const securityContext = createSecurityContext({ allowNetworkListen });
 
 const defaultProject = {
   formatVersion: 1,
@@ -465,8 +474,8 @@ function renderNode(node) {
     return normalized ? normalized.split('\n').map((line) => line.trimEnd()) : [fallback];
   };
   const locator = resolveSelector(fields, 'locator', '[data-testid="submit"]');
-  const target = resolveSelector(fields, 'target', '[data-testid="target"]');
-  const guard = resolveSelector(fields, 'guard', '[data-testid="guard"]');
+  const target = resolveSelector(fields, 'target', '[data-testid="dashboard-title"]');
+  const guard = resolveSelector(fields, 'guard', '[data-testid="toast-error"]');
 
   switch (node.data.kind) {
     case 'navigate':
@@ -580,11 +589,11 @@ async function executeNodeStep(node, page, variables) {
     variables,
   );
   const target = resolveTemplate(
-    resolveSelector(fields, 'target', '[data-testid="target"]'),
+    resolveSelector(fields, 'target', '[data-testid="dashboard-title"]'),
     variables,
   );
   const guard = resolveTemplate(
-    resolveSelector(fields, 'guard', '[data-testid="guard"]'),
+    resolveSelector(fields, 'guard', '[data-testid="toast-error"]'),
     variables,
   );
 
@@ -608,11 +617,11 @@ async function executeNodeStep(node, page, variables) {
         fields.expectation || 'Expected text',
         variables,
       );
-      const actualText = String((await page.locator(locator).textContent()) || '');
+      const actualText = String((await page.locator(target).textContent()) || '');
 
       if (!actualText.includes(expectedText)) {
         throw new Error(
-          `Assertion failed for ${locator}. Expected to include "${expectedText}", got "${actualText}".`,
+          `Assertion failed for ${target}. Expected to include "${expectedText}", got "${actualText}".`,
         );
       }
 
@@ -826,24 +835,24 @@ async function startTestRun(project, payload) {
   let runTestId = requestedId;
   let runTestName = String(payload?.testName || 'Untitled flow');
 
-  if (Array.isArray(payload?.nodes) && Array.isArray(payload?.edges) && requestedId) {
-    runNodes = payload.nodes.map(sanitizeNode);
-    runEdges = payload.edges
-      .map(sanitizeEdge)
-      .filter((edge) => edge.source && edge.target);
-  } else {
-    const tests = await loadTests(project);
-    const selectedTest = tests.find((test) => test.id === requestedId);
-
-    if (!selectedTest) {
-      throw new Error(`Flow "${requestedId}" does not exist.`);
-    }
-
-    runNodes = selectedTest.nodes;
-    runEdges = selectedTest.edges;
-    runTestId = selectedTest.id;
-    runTestName = selectedTest.name;
+  if (Array.isArray(payload?.nodes) || Array.isArray(payload?.edges)) {
+    throw createHttpError(
+      400,
+      'Runs execute persisted flows only. Save the flow, then run it by id.',
+    );
   }
+
+  const tests = await loadTests(project);
+  const selectedTest = tests.find((test) => test.id === requestedId);
+
+  if (!selectedTest) {
+    throw createHttpError(404, `Flow "${requestedId}" does not exist.`);
+  }
+
+  runNodes = selectedTest.nodes;
+  runEdges = selectedTest.edges;
+  runTestId = selectedTest.id;
+  runTestName = selectedTest.name;
 
   const orderedNodes = orderNodes(runNodes, runEdges);
   const runId = normalizeRunId(randomUUID());
@@ -1240,17 +1249,7 @@ async function commitGitWorkspace(message) {
 }
 
 async function parseBody(request) {
-  const chunks = [];
-
-  for await (const chunk of request) {
-    chunks.push(chunk);
-  }
-
-  if (chunks.length === 0) {
-    return {};
-  }
-
-  const raw = Buffer.concat(chunks).toString('utf8').trim();
+  const raw = (await readLimitedBody(request)).trim();
 
   if (!raw) {
     return {};
@@ -1301,8 +1300,25 @@ function getRunErrorMessage(error) {
   return firstLine ? firstLine.trim() : 'Run failed.';
 }
 
+const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
 async function handleApi(request, response) {
   const url = new URL(request.url || '/', 'http://localhost');
+
+  try {
+    if (request.method === 'POST' && url.pathname === '/api/session') {
+      handleSessionExchange(securityContext, request, response, url);
+      return;
+    }
+
+    authenticate(securityContext, request, {
+      mutating: mutatingMethods.has(request.method),
+    });
+  } catch (error) {
+    sendError(response, getHttpStatus(error), getErrorMessage(error));
+    return;
+  }
+
   const project = await readProject();
   await ensureWorkspaceLayout(project);
 
@@ -1472,7 +1488,17 @@ async function start() {
     });
 
     server.listen(port, host, () => {
-      console.log(`Playwright Low-Code Studio listening on http://${host}:${port}`);
+      if (allowNetworkListen) {
+        console.warn(
+          '\\n  WARNING: --unsafe-network-listen exposes this Studio beyond loopback.\\n' +
+            '  Anyone who can reach this port and obtain the launch token can execute\\n' +
+            '  repository code on this machine. Do not use on untrusted networks.\\n',
+        );
+      }
+
+      console.log(
+        `Playwright Low-Code Studio listening on ${launchUrl(securityContext, host, port)}`,
+      );
     });
 
     return;
@@ -1520,7 +1546,17 @@ async function start() {
   });
 
   server.listen(port, host, () => {
-    console.log(`Playwright Low-Code Studio listening on http://${host}:${port}`);
+    if (allowNetworkListen) {
+      console.warn(
+        '\\n  WARNING: --unsafe-network-listen exposes this Studio beyond loopback.\\n' +
+          '  Anyone who can reach this port and obtain the launch token can execute\\n' +
+          '  repository code on this machine. Do not use on untrusted networks.\\n',
+      );
+    }
+
+    console.log(
+      `Playwright Low-Code Studio listening on ${launchUrl(securityContext, host, port)}`,
+    );
   });
 }
 
