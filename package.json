@@ -11,7 +11,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "node server.mjs --prod",
     "test:ui": "playwright test",
-    "test:ui:headed": "playwright test --headed"
+    "test:ui:headed": "playwright test --headed",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "migrate": "vite-node scripts/migrate-workspace.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.8.5",
@@ -26,6 +29,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
     "vite": "^6.0.1",
+    "vite-node": "^2.1.9",
     "vitest": "^2.1.9"
   }
 }
