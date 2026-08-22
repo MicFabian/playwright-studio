@@ -615,8 +615,13 @@ class Compiler {
     const scoped = step.kind === 'condition' || step.kind === 'loop' || step.kind === 'try';
     const wrapped = !scoped && step.kind !== 'comment';
 
+    const title =
+      this.profile === 'studio-run'
+        ? `[${step.id}] ${this.stepLabel(step)}`
+        : this.stepLabel(step);
+
     if (wrapped) {
-      this.emitter.push(`await test.step(${quote(this.stepLabel(step))}, async () => {`);
+      this.emitter.push(`await test.step(${quote(title)}, async () => {`);
       this.emitter.indent();
     }
 
@@ -629,12 +634,6 @@ class Compiler {
     if (wrapped) {
       this.emitter.dedent();
       this.emitter.push('});');
-    }
-
-    if (this.profile === 'studio-run') {
-      this.emitter.push(
-        `await __studio.capture(${quote(step.id)}, ${quote(this.stepLabel(step))});`,
-      );
     }
 
     this.stepLocations[step.id] = {
@@ -655,10 +654,6 @@ class Compiler {
     }
 
     this.emitter.push(`import { expect, test } from ${quote(this.testImport)};`);
-
-    if (this.profile === 'studio-run') {
-      this.emitter.push("import { createStudioReporter } from './__studio-runtime';");
-    }
 
     this.emitter.push('');
 
@@ -686,10 +681,6 @@ class Compiler {
 
     if (document.testOptions?.timeoutMs) {
       this.emitter.push(`test.setTimeout(${Math.trunc(document.testOptions.timeoutMs)});`);
-    }
-
-    if (this.profile === 'studio-run') {
-      this.emitter.push('const __studio = createStudioReporter(page, test.info());');
     }
 
     this.emitSequence(document.root);

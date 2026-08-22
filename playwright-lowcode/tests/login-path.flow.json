@@ -1,232 +1,135 @@
 {
+  "formatVersion": 2,
   "id": "login-path",
   "name": "Login path",
   "status": "stable",
   "updatedAt": "2026-03-19T14:15:00.000Z",
-  "nodes": [
-    {
-      "id": "node-open-login",
-      "type": "flow",
-      "position": {
+  "root": {
+    "steps": [
+      {
+        "id": "node-open-login",
+        "label": "Open local page",
+        "kind": "navigate",
+        "url": {
+          "source": "literal",
+          "value": "about:blank"
+        }
+      },
+      {
+        "id": "node-load-login-fixture",
+        "label": "Load login fixture",
+        "kind": "code",
+        "code": "await page.setContent(`\n<main>\n  <label>Email <input name='email' /></label>\n  <label>Password <input name='password' type='password' /></label>\n  <button data-testid='submit-login'>Sign in</button>\n  <h1 data-testid='dashboard-title'>Signed out</h1>\n</main>\n<script>\n  const email = document.querySelector('[name=\"email\"]');\n  const password = document.querySelector('[name=\"password\"]');\n  const submit = document.querySelector('[data-testid=\"submit-login\"]');\n  const title = document.querySelector('[data-testid=\"dashboard-title\"]');\n  submit.addEventListener('click', () => {\n    title.textContent = email.value && password.value ? 'Dashboard' : 'Signed out';\n  });\n</script>\n`);"
+      },
+      {
+        "id": "node-fill-email",
+        "label": "Fill email",
+        "kind": "fill",
+        "target": {
+          "base": {
+            "by": "css",
+            "selector": {
+              "source": "literal",
+              "value": "[name=\"email\"]"
+            }
+          }
+        },
+        "value": {
+          "source": "literal",
+          "value": "qa@example.com"
+        }
+      },
+      {
+        "id": "node-fill-password",
+        "label": "Fill password",
+        "kind": "fill",
+        "target": {
+          "base": {
+            "by": "css",
+            "selector": {
+              "source": "literal",
+              "value": "[name=\"password\"]"
+            }
+          }
+        },
+        "value": {
+          "source": "literal",
+          "value": "super-secret-password"
+        }
+      },
+      {
+        "id": "node-submit-login",
+        "label": "Submit login",
+        "kind": "click",
+        "target": {
+          "base": {
+            "by": "testId",
+            "value": {
+              "source": "literal",
+              "value": "submit-login"
+            }
+          }
+        }
+      },
+      {
+        "id": "node-dashboard-loads",
+        "label": "Dashboard loads",
+        "kind": "assert",
+        "target": {
+          "base": {
+            "by": "testId",
+            "value": {
+              "source": "literal",
+              "value": "dashboard-title"
+            }
+          }
+        },
+        "assertion": {
+          "type": "containsText",
+          "text": {
+            "source": "literal",
+            "value": "Dashboard"
+          }
+        }
+      },
+      {
+        "id": "node-wait-dashboard",
+        "label": "Wait for dashboard",
+        "kind": "code",
+        "code": "const headline = \"Dashboard\";\nawait expect(page.locator('[data-testid=\"dashboard-title\"]')).toContainText(headline);"
+      }
+    ]
+  },
+  "layout": {
+    "positions": {
+      "node-open-login": {
         "x": 48,
         "y": 144
       },
-      "data": {
-        "kind": "navigate",
-        "category": "entry",
-        "title": "Open local page",
-        "description": "Start from a deterministic blank page.",
-        "accent": "#19c2b0",
-        "codeLabel": "page.goto()",
-        "status": "ready",
-        "fields": [
-          {
-            "key": "url",
-            "label": "URL",
-            "value": "about:blank"
-          }
-        ]
-      }
-    },
-    {
-      "id": "node-load-login-fixture",
-      "type": "flow",
-      "position": {
+      "node-load-login-fixture": {
         "x": 360,
         "y": 144
       },
-      "data": {
-        "kind": "snippet",
-        "category": "snippet",
-        "title": "Load login fixture",
-        "description": "Inject a local login UI so the flow can run anywhere.",
-        "accent": "#f3d27a",
-        "codeLabel": "custom snippet",
-        "status": "ready",
-        "fields": [],
-        "snippetCode": "await page.setContent(`\n<main>\n  <label>Email <input name='email' /></label>\n  <label>Password <input name='password' type='password' /></label>\n  <button data-testid='submit-login'>Sign in</button>\n  <h1 data-testid='dashboard-title'>Signed out</h1>\n</main>\n<script>\n  const email = document.querySelector('[name=\"email\"]');\n  const password = document.querySelector('[name=\"password\"]');\n  const submit = document.querySelector('[data-testid=\"submit-login\"]');\n  const title = document.querySelector('[data-testid=\"dashboard-title\"]');\n  submit.addEventListener('click', () => {\n    title.textContent = email.value && password.value ? 'Dashboard' : 'Signed out';\n  });\n</script>\n`);"
-      }
-    },
-    {
-      "id": "node-fill-email",
-      "type": "flow",
-      "position": {
+      "node-fill-email": {
         "x": 692,
         "y": 76
       },
-      "data": {
-        "kind": "fill",
-        "category": "action",
-        "title": "Fill email",
-        "description": "Type or replace content in a field.",
-        "accent": "#f59e0b",
-        "codeLabel": "locator.fill()",
-        "status": "ready",
-        "fields": [
-          {
-            "key": "locator",
-            "label": "Locator",
-            "value": "[name=\"email\"]"
-          },
-          {
-            "key": "value",
-            "label": "Value",
-            "value": "qa@example.com"
-          }
-        ]
-      }
-    },
-    {
-      "id": "node-fill-password",
-      "type": "flow",
-      "position": {
+      "node-fill-password": {
         "x": 692,
         "y": 248
       },
-      "data": {
-        "kind": "fill",
-        "category": "action",
-        "title": "Fill password",
-        "description": "Type or replace content in a field.",
-        "accent": "#f59e0b",
-        "codeLabel": "locator.fill()",
-        "status": "ready",
-        "fields": [
-          {
-            "key": "locator",
-            "label": "Locator",
-            "value": "[name=\"password\"]"
-          },
-          {
-            "key": "value",
-            "label": "Value",
-            "value": "super-secret-password"
-          }
-        ]
-      }
-    },
-    {
-      "id": "node-submit-login",
-      "type": "flow",
-      "position": {
+      "node-submit-login": {
         "x": 1012,
         "y": 144
       },
-      "data": {
-        "kind": "click",
-        "category": "action",
-        "title": "Submit login",
-        "description": "Trigger a button, link, or custom locator.",
-        "accent": "#ffc857",
-        "codeLabel": "locator.click()",
-        "status": "ready",
-        "fields": [
-          {
-            "key": "locator",
-            "label": "Locator",
-            "value": "[data-testid=\"submit-login\"]"
-          }
-        ]
-      }
-    },
-    {
-      "id": "node-dashboard-loads",
-      "type": "flow",
-      "position": {
+      "node-dashboard-loads": {
         "x": 1332,
         "y": 144
       },
-      "data": {
-        "kind": "assert",
-        "category": "assertion",
-        "title": "Dashboard loads",
-        "description": "Validate text, visibility, or state.",
-        "accent": "#ff825b",
-        "codeLabel": "expect()",
-        "status": "ready",
-        "fields": [
-          {
-            "key": "target",
-            "label": "Target",
-            "value": "[data-testid=\"dashboard-title\"]"
-          },
-          {
-            "key": "expectation",
-            "label": "Expectation",
-            "value": "Dashboard"
-          }
-        ]
-      }
-    },
-    {
-      "id": "node-wait-dashboard",
-      "type": "flow",
-      "position": {
+      "node-wait-dashboard": {
         "x": 1652,
         "y": 144
-      },
-      "data": {
-        "kind": "snippet",
-        "category": "snippet",
-        "title": "Wait for dashboard",
-        "description": "Confirm the dashboard headline matches the expected value.",
-        "accent": "#f3d27a",
-        "codeLabel": "custom snippet",
-        "status": "ready",
-        "snippetRef": "wait-for-dashboard",
-        "fields": [
-          {
-            "key": "headline",
-            "label": "headline",
-            "value": "Dashboard"
-          }
-        ],
-        "snippetCode": "await expect(page.locator('[data-testid=\"dashboard-title\"]')).toContainText(headline);"
       }
     }
-  ],
-  "edges": [
-    {
-      "id": "edge-login-1",
-      "source": "node-open-login",
-      "target": "node-load-login-fixture",
-      "type": "smoothstep",
-      "animated": true
-    },
-    {
-      "id": "edge-login-2",
-      "source": "node-load-login-fixture",
-      "target": "node-fill-email",
-      "type": "smoothstep",
-      "animated": true
-    },
-    {
-      "id": "edge-login-3",
-      "source": "node-fill-email",
-      "target": "node-fill-password",
-      "type": "smoothstep",
-      "animated": true
-    },
-    {
-      "id": "edge-login-4",
-      "source": "node-fill-password",
-      "target": "node-submit-login",
-      "type": "smoothstep",
-      "animated": true
-    },
-    {
-      "id": "edge-login-5",
-      "source": "node-submit-login",
-      "target": "node-dashboard-loads",
-      "type": "smoothstep",
-      "animated": true
-    },
-    {
-      "id": "edge-login-6",
-      "source": "node-dashboard-loads",
-      "target": "node-wait-dashboard",
-      "type": "smoothstep",
-      "animated": true
-    }
-  ]
+  }
 }

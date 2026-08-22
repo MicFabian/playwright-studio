@@ -296,8 +296,15 @@ describe('profiles', () => {
         .filter((line) => line.startsWith('await page.') || line.startsWith('await expect('));
 
     expect(meaningful(run.source)).toEqual(meaningful(commit.source));
-    expect(run.source).toContain('__studio.capture("a"');
-    expect(commit.source).not.toContain('__studio');
+  });
+
+  it('studio-run tags step titles with ids so the reporter can map them back', () => {
+    const run = compileFlow(doc(steps), { profile: 'studio-run' });
+    const commit = compileFlow(doc(steps), { profile: 'commit' });
+
+    expect(run.source).toContain('test.step("[a] Open page"');
+    expect(commit.source).toContain('test.step("Open page"');
+    expect(commit.source).not.toContain('[a]');
   });
 
   it('respects a workspace fixture import', () => {
