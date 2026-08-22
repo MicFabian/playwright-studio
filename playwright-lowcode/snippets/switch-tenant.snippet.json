@@ -2,9 +2,7 @@
   "id": "switch-tenant",
   "name": "Switch tenant",
   "description": "Open the tenant picker and choose the requested workspace.",
-  "params": [
-    "tenantName"
-  ],
+  "params": ["tenantName"],
   "code": "await page.locator('[aria-haspopup=\"listbox\"]').click();\nawait page.locator(`[data-tenant=\"${tenantName}\"]`).click();",
   "updatedAt": "2026-03-19T14:15:00.000Z"
 }

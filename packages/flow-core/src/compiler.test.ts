@@ -34,7 +34,9 @@ describe('locator emission', () => {
       {
         id: 'a',
         kind: 'click',
-        target: { base: { by: 'role', role: 'button', name: { source: 'literal', value: 'Sign in' } } },
+        target: {
+          base: { by: 'role', role: 'button', name: { source: 'literal', value: 'Sign in' } },
+        },
       },
       { id: 'b', kind: 'click', target: testId('submit') },
       {
@@ -118,7 +120,11 @@ describe('assertions', () => {
         id: 'b',
         kind: 'assert',
         target: testId('t'),
-        assertion: { type: 'containsText', text: { source: 'literal', value: 'Hi' }, negated: true },
+        assertion: {
+          type: 'containsText',
+          text: { source: 'literal', value: 'Hi' },
+          negated: true,
+        },
       },
       {
         id: 'c',
@@ -174,7 +180,12 @@ describe('nesting', () => {
         itemName: 'row',
         body: {
           steps: [
-            { id: 'fill', kind: 'fill', target: testId('cell'), value: { source: 'variable', name: 'row' } },
+            {
+              id: 'fill',
+              kind: 'fill',
+              target: testId('cell'),
+              value: { source: 'variable', name: 'row' },
+            },
           ],
         },
       },
@@ -195,7 +206,12 @@ describe('nesting', () => {
           itemName: 'row',
           body: { steps: [{ id: 'c', kind: 'click', target: testId('x') }] },
         },
-        { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'row' } },
+        {
+          id: 'after',
+          kind: 'fill',
+          target: testId('y'),
+          value: { source: 'variable', name: 'row' },
+        },
       ]),
     ).toContain('unknown-variable');
   });
@@ -251,14 +267,17 @@ describe('diagnostics', () => {
   it('rejects unknown and malformed variables', () => {
     expect(
       errorCodes([
-        { id: 'a', kind: 'fill', target: testId('x'), value: { source: 'variable', name: 'ghost' } },
+        {
+          id: 'a',
+          kind: 'fill',
+          target: testId('x'),
+          value: { source: 'variable', name: 'ghost' },
+        },
       ]),
     ).toContain('unknown-variable');
 
     expect(
-      errorCodes([
-        { id: 'a', kind: 'extract', target: testId('x'), variable: 'not valid' },
-      ]),
+      errorCodes([{ id: 'a', kind: 'extract', target: testId('x'), variable: 'not valid' }]),
     ).toContain('invalid-variable');
   });
 
@@ -278,9 +297,9 @@ describe('diagnostics', () => {
   });
 
   it('reports a missing target rather than emitting a broken locator', () => {
-    expect(
-      errorCodes([{ id: 'a', kind: 'click' } as unknown as FlowStep]),
-    ).toContain('missing-target');
+    expect(errorCodes([{ id: 'a', kind: 'click' } as unknown as FlowStep])).toContain(
+      'missing-target',
+    );
   });
 
   it('treats a valid flow as non-blocking', () => {
@@ -345,9 +364,9 @@ describe('malformed input is a diagnostic, never a crash or a broken file', () =
       },
     ]);
 
-    expect(
-      result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error'),
-    ).toHaveLength(0);
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toHaveLength(
+      0,
+    );
   });
 
   it('does not crash on a call step missing its arguments', () => {
@@ -377,7 +396,12 @@ describe('branch and loop variables stay readable afterwards', () => {
         predicate: { type: 'expression', code: 'true' },
         then: { steps: [{ id: 'x', kind: 'extract', target: testId('v'), variable: 'seen' }] },
       },
-      { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'seen' } },
+      {
+        id: 'after',
+        kind: 'fill',
+        target: testId('y'),
+        value: { source: 'variable', name: 'seen' },
+      },
     ]);
 
     const lines = result.source.split('\n').map((line) => line.trim());
@@ -396,7 +420,12 @@ describe('branch and loop variables stay readable afterwards', () => {
         itemName: 'row',
         body: { steps: [{ id: 'x', kind: 'extract', target: testId('v'), variable: 'last' }] },
       },
-      { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'last' } },
+      {
+        id: 'after',
+        kind: 'fill',
+        target: testId('y'),
+        value: { source: 'variable', name: 'last' },
+      },
     ]);
 
     expect(hasBlockingDiagnostics(result)).toBe(false);
@@ -457,7 +486,12 @@ describe('conditional assignment is surfaced', () => {
         predicate: { type: 'expression', code: 'true' },
         then: { steps: [{ id: 'x', kind: 'extract', target: testId('v'), variable: 'maybe' }] },
       },
-      { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'maybe' } },
+      {
+        id: 'after',
+        kind: 'fill',
+        target: testId('y'),
+        value: { source: 'variable', name: 'maybe' },
+      },
     ]);
 
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(
@@ -469,7 +503,12 @@ describe('conditional assignment is surfaced', () => {
   it('does not warn for a variable set at the top level', () => {
     const result = compile([
       { id: 'x', kind: 'extract', target: testId('v'), variable: 'always' },
-      { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'always' } },
+      {
+        id: 'after',
+        kind: 'fill',
+        target: testId('y'),
+        value: { source: 'variable', name: 'always' },
+      },
     ]);
 
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).not.toContain(
@@ -625,14 +664,21 @@ describe('snippets', () => {
     expect(diagnostics.filter((diagnostic) => diagnostic.severity === 'error')).toHaveLength(0);
     expect(source).toContain('const headline = "Dashboard";');
     expect(source).toContain('const timeoutMs = 5000;');
-    expect(source).toContain('await expect(title).toContainText(headline, { timeout: timeoutMs });');
+    expect(source).toContain(
+      'await expect(title).toContainText(headline, { timeout: timeoutMs });',
+    );
   });
 
   it('scopes snippet bindings to the snippet block', () => {
     const result = compileFlow(
       doc([
         useStep(),
-        { id: 'after', kind: 'fill', target: testId('x'), value: { source: 'variable', name: 'headline' } },
+        {
+          id: 'after',
+          kind: 'fill',
+          target: testId('x'),
+          value: { source: 'variable', name: 'headline' },
+        },
       ]),
       { snippets: [waitForDashboard] },
     );
@@ -734,7 +780,9 @@ describe('data-driven tests', () => {
     const { source } = compile(loginSteps, { data: dataset });
 
     expect(source).toContain('const cases = [');
-    expect(source).toContain('{ name: "valid user", email: "qa@example.com", expected: "Dashboard" },');
+    expect(source).toContain(
+      '{ name: "valid user", email: "qa@example.com", expected: "Dashboard" },',
+    );
     expect(source).toContain('for (const { name, email, expected } of cases) {');
     expect(source).toContain('test("Sample flow" + " — " + name, async ({ page }) => {');
   });
@@ -917,9 +965,14 @@ describe('baseURL awareness', () => {
 describe('env values', () => {
   it('reads environment variables without inlining secrets', () => {
     const { source } = compile([
-      { id: 'a', kind: 'fill', target: testId('pw'), value: { source: 'env', name: 'APP_PASSWORD' } },
+      {
+        id: 'a',
+        kind: 'fill',
+        target: testId('pw'),
+        value: { source: 'env', name: 'APP_PASSWORD' },
+      },
     ]);
 
-    expect(source).toContain("process.env[\"APP_PASSWORD\"] ?? ''");
+    expect(source).toContain('process.env["APP_PASSWORD"] ?? \'\'');
   });
 });

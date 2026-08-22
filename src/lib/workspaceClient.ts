@@ -95,10 +95,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-function jsonRequest<T>(
-  path: string,
-  init: JsonRequestInit = {},
-): Promise<T> {
+function jsonRequest<T>(path: string, init: JsonRequestInit = {}): Promise<T> {
   const { body, headers, ...rest } = init;
   const mergedHeaders = new Headers(headers);
   const jsonBody = body === undefined ? undefined : JSON.stringify(body);
@@ -118,9 +115,11 @@ export function loadWorkspace() {
   return request<WorkspaceData>('/api/workspace');
 }
 
-export function saveTest(test: Pick<StoredTestFlow, 'id' | 'name' | 'status'> & {
-  document: FlowDocument;
-}) {
+export function saveTest(
+  test: Pick<StoredTestFlow, 'id' | 'name' | 'status'> & {
+    document: FlowDocument;
+  },
+) {
   return jsonRequest<{ test: StoredTestFlow; git: GitState }>(`/api/tests/${test.id}`, {
     method: 'PUT',
     body: test,
@@ -183,10 +182,10 @@ export function listRuns() {
 }
 
 export function cancelRun(runId: string) {
-  return jsonRequest<{ cancelled: boolean }>(
-    `/api/runs/${encodeURIComponent(runId)}/cancel`,
-    { method: 'POST', body: {} },
-  );
+  return jsonRequest<{ cancelled: boolean }>(`/api/runs/${encodeURIComponent(runId)}/cancel`, {
+    method: 'POST',
+    body: {},
+  });
 }
 
 export function artifactUrl(runId: string, relativePath: string) {

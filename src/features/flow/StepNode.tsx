@@ -46,7 +46,9 @@ function StepNodeComponent({ id, data, selected }: NodeProps<Node<StepNodeData>>
           <Icon name={data.icon} />
         </span>
         <span className="step-node__title">{data.title}</span>
-        {stepStatus ? <span className={`step-node__status step-node__status--${stepStatus}`} /> : null}
+        {stepStatus ? (
+          <span className={`step-node__status step-node__status--${stepStatus}`} />
+        ) : null}
       </header>
 
       <p className="step-node__subtitle">{data.subtitle}</p>

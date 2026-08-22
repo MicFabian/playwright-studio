@@ -35,7 +35,9 @@ export function RunPanel() {
   const labelFor = (stepId: string) => {
     let label = stepId;
 
-    const walk = (steps: typeof document extends null ? never : NonNullable<typeof document>['root']['steps']) => {
+    const walk = (
+      steps: typeof document extends null ? never : NonNullable<typeof document>['root']['steps'],
+    ) => {
       steps.forEach((step) => {
         if (step.id === stepId) {
           label = step.label?.trim() || blockRegistry[step.kind]?.title || step.kind;

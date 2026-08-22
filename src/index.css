@@ -134,7 +134,9 @@ textarea {
   border-radius: var(--radius);
   padding: var(--step-1) var(--step-3);
   font-size: 0.82rem;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .topbar__actions button:hover:not(:disabled),
@@ -310,7 +312,9 @@ button.danger {
 
 .step-node--selected {
   border-color: var(--accent);
-  box-shadow: var(--shadow-2), 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow:
+    var(--shadow-2),
+    0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .step-node--scope {
@@ -319,7 +323,9 @@ button.danger {
 }
 
 .step-node--running {
-  box-shadow: var(--shadow-2), 0 0 0 2px color-mix(in srgb, var(--warning) 45%, transparent);
+  box-shadow:
+    var(--shadow-2),
+    0 0 0 2px color-mix(in srgb, var(--warning) 45%, transparent);
 }
 
 .step-node--failed {

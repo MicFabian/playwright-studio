@@ -42,12 +42,22 @@ A flow is a nested document, not a graph:
 {
   "formatVersion": 2,
   "name": "Login path",
-  "root": { "steps": [
-    { "id": "s1", "kind": "navigate", "url": { "source": "literal", "value": "/login" } },
-    { "id": "s2", "kind": "condition",
-      "predicate": { "type": "locatorVisible", "target": { "base": { "by": "testId", "value": { "source": "literal", "value": "toast" } } } },
-      "then": { "steps": [] } }
-  ]},
+  "root": {
+    "steps": [
+      { "id": "s1", "kind": "navigate", "url": { "source": "literal", "value": "/login" } },
+      {
+        "id": "s2",
+        "kind": "condition",
+        "predicate": {
+          "type": "locatorVisible",
+          "target": {
+            "base": { "by": "testId", "value": { "source": "literal", "value": "toast" } }
+          }
+        },
+        "then": { "steps": [] }
+      }
+    ]
+  },
   "layout": { "positions": {} }
 }
 ```
@@ -81,12 +91,14 @@ failure names the case that failed rather than a row index inside one test:
 
 ```ts
 const cases = [
-  { name: "valid user", email: "qa@example.com", expected: "Dashboard" },
-  { name: "blocked user", email: "blocked@example.com", expected: "Suspended" },
+  { name: 'valid user', email: 'qa@example.com', expected: 'Dashboard' },
+  { name: 'blocked user', email: 'blocked@example.com', expected: 'Suspended' },
 ];
 
 for (const { name, email, expected } of cases) {
-  test("Login path" + " — " + name, async ({ page }) => { /* ... */ });
+  test('Login path' + ' — ' + name, async ({ page }) => {
+    /* ... */
+  });
 }
 ```
 
@@ -140,13 +152,13 @@ npm run dev
 
 Open the URL printed at startup — it carries the launch token.
 
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Studio with the file API and Vite |
-| `npm run build` | Build packages, typecheck, bundle |
-| `npm test` | Unit tests for the compiler, migration, commands, importer |
-| `npm run test:ui` | End-to-end tests against the real server |
-| `npm run migrate -- --write` | Migrate v1 flow files to v2 |
+| Command                      | What it does                                               |
+| ---------------------------- | ---------------------------------------------------------- |
+| `npm run dev`                | Studio with the file API and Vite                          |
+| `npm run build`              | Build packages, typecheck, bundle                          |
+| `npm test`                   | Unit tests for the compiler, migration, commands, importer |
+| `npm run test:ui`            | End-to-end tests against the real server                   |
+| `npm run migrate -- --write` | Migrate v1 flow files to v2                                |
 
 ## Migrating from v1
 

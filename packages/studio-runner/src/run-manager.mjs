@@ -90,9 +90,7 @@ export class RunManager extends EventEmitter {
   async listRuns() {
     const entries = await fs.readdir(this.runsDir, { withFileTypes: true }).catch(() => []);
     const manifests = await Promise.all(
-      entries
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => this.readManifest(entry.name)),
+      entries.filter((entry) => entry.isDirectory()).map((entry) => this.readManifest(entry.name)),
     );
 
     return manifests
@@ -155,9 +153,7 @@ export class RunManager extends EventEmitter {
     }
 
     perTest.forEach((manifests) => {
-      manifests
-        .slice(RETENTION.maxRunsPerTest)
-        .forEach((manifest) => removals.add(manifest.id));
+      manifests.slice(RETENTION.maxRunsPerTest).forEach((manifest) => removals.add(manifest.id));
     });
 
     const survivors = runs.filter(

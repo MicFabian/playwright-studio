@@ -29,9 +29,16 @@ describe('ADVERSARIAL: Edge cases', () => {
         id: 'cond',
         kind: 'condition',
         predicate: { type: 'expression', code: 'true' },
-        then: { steps: [{ id: 'x', kind: 'extract', target: testId('val'), variable: 'extracted' }] },
+        then: {
+          steps: [{ id: 'x', kind: 'extract', target: testId('val'), variable: 'extracted' }],
+        },
       },
-      { id: 'after', kind: 'fill', target: testId('y'), value: { source: 'variable', name: 'extracted' } },
+      {
+        id: 'after',
+        kind: 'fill',
+        target: testId('y'),
+        value: { source: 'variable', name: 'extracted' },
+      },
     ]);
 
     const errors = result.diagnostics.filter((d) => d.severity === 'error').map((d) => d.code);
@@ -43,9 +50,7 @@ describe('ADVERSARIAL: Edge cases', () => {
   });
 
   it('code step with return statement inside test.step wrapper', () => {
-    const result = compile([
-      { id: 'code', kind: 'code', code: 'return;' }
-    ]);
+    const result = compile([{ id: 'code', kind: 'code', code: 'return;' }]);
 
     const source = result.source;
     expect(source).toMatch(/await test\.step\(.*async \(\) => \{[\s\S]*return;[\s\S]*\}\)/);
@@ -53,7 +58,7 @@ describe('ADVERSARIAL: Edge cases', () => {
 
   it('comment with */ in the text', () => {
     const result = compile([
-      { id: 'note', kind: 'comment', text: 'Note: this comment ends block */' }
+      { id: 'note', kind: 'comment', text: 'Note: this comment ends block */' },
     ]);
 
     const commentLine = result.source.split('\n').find((line) => line.includes('Note:'));
@@ -65,7 +70,7 @@ describe('ADVERSARIAL: Edge cases', () => {
 
   it('step label with double quotes gets escaped', () => {
     const result = compile([
-      { id: 'a', kind: 'click', target: testId('x'), label: 'Click the "submit" button' }
+      { id: 'a', kind: 'click', target: testId('x'), label: 'Click the "submit" button' },
     ]);
 
     const source = result.source;
@@ -78,24 +83,31 @@ describe('ADVERSARIAL: Edge cases', () => {
         id: 'try1',
         kind: 'try',
         body: {
-          steps: [{
-            id: 'loop1',
-            kind: 'loop',
-            source: { source: 'literal', value: 'items' },
-            itemName: 'item',
-            body: {
-              steps: [{
-                id: 'cond1',
-                kind: 'condition',
-                predicate: { type: 'expression', code: 'item > 5' },
-                then: { steps: [{ id: 'c', kind: 'click', target: testId('x') }] },
-              }]
-            }
-          }]
+          steps: [
+            {
+              id: 'loop1',
+              kind: 'loop',
+              source: { source: 'literal', value: 'items' },
+              itemName: 'item',
+              body: {
+                steps: [
+                  {
+                    id: 'cond1',
+                    kind: 'condition',
+                    predicate: { type: 'expression', code: 'item > 5' },
+                    then: { steps: [{ id: 'c', kind: 'click', target: testId('x') }] },
+                  },
+                ],
+              },
+            },
+          ],
         },
-        catch: { errorName: 'e', body: { steps: [{ id: 'note', kind: 'comment', text: 'error' }] } },
+        catch: {
+          errorName: 'e',
+          body: { steps: [{ id: 'note', kind: 'comment', text: 'error' }] },
+        },
         finally: { steps: [{ id: 'cleanup', kind: 'comment', text: 'cleanup' }] },
-      }
+      },
     ]);
 
     const source = result.source;
@@ -113,26 +125,29 @@ describe('ADVERSARIAL: Edge cases', () => {
         catch: {
           errorName: 'e',
           body: {
-            steps: [
-              { id: 'x', kind: 'extract', target: testId('error'), variable: 'errorMsg' }
-            ]
-          }
-        }
+            steps: [{ id: 'x', kind: 'extract', target: testId('error'), variable: 'errorMsg' }],
+          },
+        },
       },
-      { id: 'after', kind: 'fill', target: testId('log'), value: { source: 'variable', name: 'errorMsg' } }
+      {
+        id: 'after',
+        kind: 'fill',
+        target: testId('log'),
+        value: { source: 'variable', name: 'errorMsg' },
+      },
     ]);
 
-    const lines = result.source.split('\n').map(l => l.trim());
+    const lines = result.source.split('\n').map((l) => l.trim());
     const hoistIdx = lines.indexOf('let errorMsg;');
-    const tryIdx = lines.findIndex(l => l === 'try {');
-    
+    const tryIdx = lines.findIndex((l) => l === 'try {');
+
     expect(hoistIdx).toBeGreaterThanOrEqual(0);
     expect(tryIdx).toBeGreaterThan(hoistIdx);
   });
 
   it('code step with template literals and interpolation does not break', () => {
     const result = compile([
-      { id: 'code', kind: 'code', code: 'const msg = `Hello ${name}`; console.log(msg);' }
+      { id: 'code', kind: 'code', code: 'const msg = `Hello ${name}`; console.log(msg);' },
     ]);
 
     const source = result.source;
@@ -143,7 +158,7 @@ describe('ADVERSARIAL: Edge cases', () => {
 
   it('code step with unbalanced brace still maintains wrapping structure', () => {
     const result = compile([
-      { id: 'code', kind: 'code', code: 'if (true) { console.log("unclosed")' }
+      { id: 'code', kind: 'code', code: 'if (true) { console.log("unclosed")' },
     ]);
 
     const source = result.source;
@@ -159,11 +174,11 @@ describe('ADVERSARIAL: Edge cases', () => {
         kind: 'loop',
         source: { source: 'literal', value: 'items' },
         itemName: 'item',
-        body: { steps: [{ id: 'note', kind: 'comment', text: 'just a comment' }] }
-      }
+        body: { steps: [{ id: 'note', kind: 'comment', text: 'just a comment' }] },
+      },
     ]);
 
-    const errorCodes = result.diagnostics.filter(d => d.severity === 'error').map(d => d.code);
+    const errorCodes = result.diagnostics.filter((d) => d.severity === 'error').map((d) => d.code);
     expect(errorCodes).not.toContain('empty-loop');
   });
 
@@ -174,7 +189,7 @@ describe('ADVERSARIAL: Edge cases', () => {
         kind: 'try',
         body: { steps: [] },
         finally: { steps: [{ id: 'cleanup', kind: 'comment', text: 'cleanup' }] },
-      }
+      },
     ]);
 
     expect(result.source).toContain('try {');
@@ -189,12 +204,13 @@ describe('ADVERSARIAL: Edge cases', () => {
       description: 'Test',
       params: [],
       outputs: [{ name: 'result', type: 'string' as const }],
-      code: 'result = "value";\nreturn result;'
+      code: 'result = "value";\nreturn result;',
     };
 
-    const result = compileFlow(doc([
-      { id: 'use', kind: 'useSnippet', snippetId: 'test-snippet', args: {} }
-    ]), { snippets: [snippet] });
+    const result = compileFlow(
+      doc([{ id: 'use', kind: 'useSnippet', snippetId: 'test-snippet', args: {} }]),
+      { snippets: [snippet] },
+    );
 
     const source = result.source;
     const openBraces = (source.match(/{/g) || []).length;

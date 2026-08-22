@@ -33,7 +33,9 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [panel, setPanel] = useState<'inspector' | 'data' | 'code' | 'run' | 'snippet'>('inspector');
+  const [panel, setPanel] = useState<'inspector' | 'data' | 'code' | 'run' | 'snippet'>(
+    'inspector',
+  );
   const [importing, setImporting] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [activeSnippetId, setActiveSnippetId] = useState<string | null>(null);
@@ -71,7 +73,10 @@ export default function App() {
   );
 
   useEffect(() => {
+    // Intentionally runs once: hydrate is recreated whenever the active flow
+    // changes, and re-running it here would reload the workspace on every switch.
     void hydrate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const activeTest = useMemo(
@@ -224,7 +229,9 @@ export default function App() {
     const isTypingTarget = (target: EventTarget | null) => {
       const element = target as HTMLElement | null;
       const tag = element?.tagName;
-      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || element?.isContentEditable;
+      return (
+        tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || element?.isContentEditable
+      );
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -371,18 +378,18 @@ export default function App() {
           <ErrorBoundary label="This panel">
             {panel === 'inspector' ? <StepInspector snippets={workspace?.snippets ?? []} /> : null}
             {panel === 'data' ? <DataPanel /> : null}
-          {panel === 'snippet' ? (
-            <SnippetEditor
-              snippet={workspace?.snippets.find((item) => item.id === activeSnippetId) ?? null}
-              onSaved={() => void hydrate(activeTestId ?? undefined)}
-            />
-          ) : null}
-          {panel === 'code' ? (
-            <CodePreview
-              snippets={workspace?.snippets ?? []}
-              playwrightConfig={workspace?.playwrightConfig}
-            />
-          ) : null}
+            {panel === 'snippet' ? (
+              <SnippetEditor
+                snippet={workspace?.snippets.find((item) => item.id === activeSnippetId) ?? null}
+                onSaved={() => void hydrate(activeTestId ?? undefined)}
+              />
+            ) : null}
+            {panel === 'code' ? (
+              <CodePreview
+                snippets={workspace?.snippets ?? []}
+                playwrightConfig={workspace?.playwrightConfig}
+              />
+            ) : null}
             {panel === 'run' ? <RunPanel /> : null}
           </ErrorBoundary>
         </section>

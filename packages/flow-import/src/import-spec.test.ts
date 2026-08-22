@@ -240,7 +240,7 @@ describe('escape hatch', () => {
     `);
 
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain('hook-preserved');
-    expect(result.scaffold[0]).toContain("import { test }");
+    expect(result.scaffold[0]).toContain('import { test }');
   });
 });
 

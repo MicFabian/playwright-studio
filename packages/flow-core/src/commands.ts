@@ -26,9 +26,7 @@ function cloneStep(step: FlowStep): FlowStep {
       return {
         ...step,
         body: cloneSequence(step.body),
-        ...(step.catch
-          ? { catch: { ...step.catch, body: cloneSequence(step.catch.body) } }
-          : {}),
+        ...(step.catch ? { catch: { ...step.catch, body: cloneSequence(step.catch.body) } } : {}),
         ...(step.finally ? { finally: cloneSequence(step.finally) } : {}),
       };
     default:
@@ -36,7 +34,11 @@ function cloneStep(step: FlowStep): FlowStep {
   }
 }
 
-export function sequenceAt(document: FlowDocument, parentId: string | null, slot: ScopeSlot | null): Sequence | null {
+export function sequenceAt(
+  document: FlowDocument,
+  parentId: string | null,
+  slot: ScopeSlot | null,
+): Sequence | null {
   if (parentId == null) {
     return document.root;
   }
@@ -124,7 +126,11 @@ export function locateStep(document: FlowDocument, stepId: string): StepPath | n
   return path;
 }
 
-export function isDescendant(document: FlowDocument, ancestorId: string, candidateId: string): boolean {
+export function isDescendant(
+  document: FlowDocument,
+  ancestorId: string,
+  candidateId: string,
+): boolean {
   let ancestor: FlowStep | null = null;
 
   const find = (sequence: Sequence) => {
@@ -182,11 +188,7 @@ function withDocument(document: FlowDocument, mutate: (draft: FlowDocument) => v
   return draft;
 }
 
-export function insertStep(
-  document: FlowDocument,
-  step: FlowStep,
-  at: StepPath,
-): FlowDocument {
+export function insertStep(document: FlowDocument, step: FlowStep, at: StepPath): FlowDocument {
   return withDocument(document, (draft) => {
     const sequence = sequenceAt(draft, at.parentId, at.slot);
 

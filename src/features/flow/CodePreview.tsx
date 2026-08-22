@@ -51,7 +51,9 @@ export function CodePreview({ snippets = [], playwrightConfig }: CodePreviewProp
       ) : null}
 
       <div className="preview__toolbar">
-        <span>{errors.length > 0 ? 'Spec is not written while errors remain' : 'Generated spec'}</span>
+        <span>
+          {errors.length > 0 ? 'Spec is not written while errors remain' : 'Generated spec'}
+        </span>
         <button
           type="button"
           onClick={() => {

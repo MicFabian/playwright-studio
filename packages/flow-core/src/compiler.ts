@@ -760,23 +760,29 @@ class Compiler {
           return;
         }
 
-        const assignments = Object.entries(useStep.assign ?? {}).filter(([outputName, variableName]) => {
-          if (!snippet.outputs.some((output) => output.name === outputName)) {
-            this.error(
-              'unknown-snippet-output',
-              `Snippet "${snippet.name}" does not produce "${outputName}".`,
-              step.id,
-            );
-            return false;
-          }
+        const assignments = Object.entries(useStep.assign ?? {}).filter(
+          ([outputName, variableName]) => {
+            if (!snippet.outputs.some((output) => output.name === outputName)) {
+              this.error(
+                'unknown-snippet-output',
+                `Snippet "${snippet.name}" does not produce "${outputName}".`,
+                step.id,
+              );
+              return false;
+            }
 
-          if (!isValidIdentifier(variableName)) {
-            this.error('invalid-variable', `"${variableName}" is not a valid variable name.`, step.id);
-            return false;
-          }
+            if (!isValidIdentifier(variableName)) {
+              this.error(
+                'invalid-variable',
+                `"${variableName}" is not a valid variable name.`,
+                step.id,
+              );
+              return false;
+            }
 
-          return true;
-        });
+            return true;
+          },
+        );
 
         this.emitter.push('{');
         this.emitter.indent();
@@ -947,9 +953,7 @@ class Compiler {
     const wrapped = !scoped && step.kind !== 'comment';
 
     const title =
-      this.profile === 'studio-run'
-        ? `[${step.id}] ${this.stepLabel(step)}`
-        : this.stepLabel(step);
+      this.profile === 'studio-run' ? `[${step.id}] ${this.stepLabel(step)}` : this.stepLabel(step);
 
     if (wrapped) {
       this.emitter.push(`await test.step(${quote(title)}, async () => {`);

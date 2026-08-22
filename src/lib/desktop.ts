@@ -1,13 +1,5 @@
 export type DesktopCommand =
-  | 'new-flow'
-  | 'save'
-  | 'import'
-  | 'undo'
-  | 'redo'
-  | 'palette'
-  | 'run'
-  | 'run-headed'
-  | 'cancel';
+  'new-flow' | 'save' | 'import' | 'undo' | 'redo' | 'palette' | 'run' | 'run-headed' | 'cancel';
 
 interface StudioDesktop {
   isDesktop: true;

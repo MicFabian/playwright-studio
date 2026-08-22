@@ -17,7 +17,11 @@ const colors = {
 
 function formatNote(note: MigrationNote): string {
   const color =
-    note.severity === 'error' ? colors.red : note.severity === 'warning' ? colors.yellow : colors.dim;
+    note.severity === 'error'
+      ? colors.red
+      : note.severity === 'warning'
+        ? colors.yellow
+        : colors.dim;
   return `    ${color}${note.severity}${colors.reset} ${note.code}: ${note.message}`;
 }
 
@@ -60,7 +64,9 @@ async function main(): Promise<void> {
     result.diagnostics
       .filter((diagnostic) => diagnostic.severity === 'error')
       .forEach((diagnostic) =>
-        console.log(`    ${colors.red}error${colors.reset} ${diagnostic.code}: ${diagnostic.message}`),
+        console.log(
+          `    ${colors.red}error${colors.reset} ${diagnostic.code}: ${diagnostic.message}`,
+        ),
       );
 
     if (write) {

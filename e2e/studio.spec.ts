@@ -37,9 +37,7 @@ test.beforeEach(async ({ page, baseURL }) => {
   await page.reload();
   await expect(page.locator('.studio')).toBeVisible();
   await expect(canvasNodes(page).first()).toBeVisible();
-  await expect(
-    library(page).getByRole('button', { name: 'Condition', exact: true }),
-  ).toBeEnabled();
+  await expect(library(page).getByRole('button', { name: 'Condition', exact: true })).toBeEnabled();
 });
 
 test('loads the workspace from disk', async ({ page }) => {
@@ -139,25 +137,29 @@ test('renaming a flow renames its files', async ({ page }) => {
   await name.fill('Renamed by test');
   await name.press('Enter');
 
-  await expect(page.locator('.explorer__list button', { hasText: 'Renamed by test' })).toBeVisible();
+  await expect(
+    page.locator('.explorer__list button', { hasText: 'Renamed by test' }),
+  ).toBeVisible();
   await expect(name).toHaveValue('Renamed by test');
 });
 
 test('importing a spec previews fidelity before adopting', async ({ page }) => {
   await page.locator('.explorer').getByRole('button', { name: 'Import spec' }).click();
 
-  await page.locator('.modal__source').fill(
-    [
-      "import { expect, test } from '@playwright/test';",
-      '',
-      "test('Imported flow', async ({ page }) => {",
-      "  await page.goto('https://example.com');",
-      "  await page.getByRole('button', { name: 'Go' }).click();",
-      "  await expect(page.getByTestId('done')).toBeVisible();",
-      '  await page.evaluate(() => window.scrollTo(0, 100));',
-      '});',
-    ].join('\n'),
-  );
+  await page
+    .locator('.modal__source')
+    .fill(
+      [
+        "import { expect, test } from '@playwright/test';",
+        '',
+        "test('Imported flow', async ({ page }) => {",
+        "  await page.goto('https://example.com');",
+        "  await page.getByRole('button', { name: 'Go' }).click();",
+        "  await expect(page.getByTestId('done')).toBeVisible();",
+        '  await page.evaluate(() => window.scrollTo(0, 100));',
+        '});',
+      ].join('\n'),
+    );
 
   await page.getByRole('button', { name: 'Analyze' }).click();
 

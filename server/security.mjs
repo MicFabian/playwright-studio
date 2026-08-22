@@ -120,7 +120,7 @@ export function handleSessionExchange(security, request, response, url) {
   response.end(`${JSON.stringify({ csrfToken: security.csrfToken })}\n`);
 }
 
-function assertTrustedOrigin(security, request, expectedHost) {
+function assertTrustedOrigin(security, request) {
   const origin = request.headers.origin;
 
   if (origin === undefined) {

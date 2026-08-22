@@ -3,7 +3,6 @@ import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { createServer as createViteServer } from 'vite';
 import {
@@ -22,10 +21,7 @@ import {
   migrateV1Flow,
 } from './packages/flow-core/dist/index.mjs';
 import { RunManager } from './packages/studio-runner/src/run-manager.mjs';
-import {
-  importSpecSource,
-  readPlaywrightConfig,
-} from './packages/flow-import/dist/index.mjs';
+import { importSpecSource, readPlaywrightConfig } from './packages/flow-import/dist/index.mjs';
 
 const execFileAsync = promisify(execFile);
 const installRoot = process.env.STUDIO_INSTALL_ROOT || process.cwd();
@@ -83,10 +79,6 @@ const runManager = new RunManager({
   },
 });
 
-function nowIso() {
-  return new Date().toISOString();
-}
-
 function createHttpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -113,7 +105,6 @@ function normalizeRunId(value) {
   return normalized;
 }
 
-
 function slugify(value) {
   const slug = String(value || '')
     .trim()
@@ -123,7 +114,6 @@ function slugify(value) {
 
   return slug || 'untitled-flow';
 }
-
 
 async function readJson(filePath) {
   const raw = await fs.readFile(filePath, 'utf8');
@@ -162,9 +152,7 @@ async function readProject() {
         ),
       },
       playwright: {
-        testImport: String(
-          parsed.playwright?.testImport || defaultProject.playwright.testImport,
-        ),
+        testImport: String(parsed.playwright?.testImport || defaultProject.playwright.testImport),
         ...(parsed.playwright?.configPath
           ? { configPath: String(parsed.playwright.configPath) }
           : {}),
@@ -243,9 +231,7 @@ async function loadTests(project) {
       }),
   );
 
-  return loaded
-    .filter(Boolean)
-    .sort((left, right) => left.name.localeCompare(right.name));
+  return loaded.filter(Boolean).sort((left, right) => left.name.localeCompare(right.name));
 }
 
 async function loadSnippets(project) {
@@ -267,9 +253,7 @@ async function loadSnippets(project) {
       }),
   );
 
-  return snippets
-    .filter(Boolean)
-    .sort((left, right) => left.name.localeCompare(right.name));
+  return snippets.filter(Boolean).sort((left, right) => left.name.localeCompare(right.name));
 }
 
 const SNIPPET_PARAM_TYPES = new Set(['string', 'number', 'boolean']);
@@ -316,11 +300,10 @@ async function runGit(args) {
 
 async function getGitStatus() {
   try {
-    const [{ stdout: root }, { stdout: statusOutput }] =
-      await Promise.all([
-        runGit(['rev-parse', '--show-toplevel']),
-        runGit(['status', '--porcelain=v1', '--branch', '--untracked-files=all']),
-      ]);
+    const [{ stdout: root }, { stdout: statusOutput }] = await Promise.all([
+      runGit(['rev-parse', '--show-toplevel']),
+      runGit(['status', '--porcelain=v1', '--branch', '--untracked-files=all']),
+    ]);
     const lines = statusOutput.trim().split('\n').filter(Boolean);
     const branchLine = lines.find((line) => line.startsWith('## '));
     const branch = branchLine
@@ -396,11 +379,7 @@ async function getGitStatus() {
   }
 }
 
-const CONFIG_CANDIDATES = [
-  'playwright.config.ts',
-  'playwright.config.js',
-  'playwright.config.mjs',
-];
+const CONFIG_CANDIDATES = ['playwright.config.ts', 'playwright.config.js', 'playwright.config.mjs'];
 
 async function discoverPlaywrightConfig(project) {
   const configured = project.playwright.configPath;
@@ -453,7 +432,9 @@ async function getWorkspace() {
 async function persistTest(project, payload, fallbackId) {
   const id = slugify(payload.id || payload.name || fallbackId || 'untitled-flow');
   const filePath = path.join(project.paths.testsDir, `${id}.flow.json`).replaceAll('\\', '/');
-  const specPath = path.join(project.paths.generatedTestsDir, `${id}.spec.ts`).replaceAll('\\', '/');
+  const specPath = path
+    .join(project.paths.generatedTestsDir, `${id}.spec.ts`)
+    .replaceAll('\\', '/');
 
   const document = {
     formatVersion: FLOW_FORMAT_VERSION,
@@ -473,10 +454,7 @@ async function persistTest(project, payload, fallbackId) {
     snippets: await loadSnippets(project),
   });
 
-  await writeFileAtomic(
-    path.join(rootDir, filePath),
-    `${JSON.stringify(document, null, 2)}\n`,
-  );
+  await writeFileAtomic(path.join(rootDir, filePath), `${JSON.stringify(document, null, 2)}\n`);
 
   if (!hasBlockingDiagnostics(compiled)) {
     await writeFileAtomic(path.join(rootDir, specPath), compiled.source);
@@ -537,10 +515,7 @@ async function renameTest(project, currentId, requestedName) {
 
 async function persistSnippet(project, payload, fallbackId) {
   const id = slugify(payload.id || payload.name || fallbackId || 'untitled-snippet');
-  const filePath = path.join(project.paths.snippetsDir, `${id}.snippet.json`).replaceAll(
-    '\\',
-    '/',
-  );
+  const filePath = path.join(project.paths.snippetsDir, `${id}.snippet.json`).replaceAll('\\', '/');
   const snippet = materializeSnippet(filePath, {
     id,
     name: payload.name,
@@ -584,9 +559,7 @@ async function createTest(project, requestedName) {
   }
 
   const candidateName =
-    candidateId === slugify(baseLabel)
-      ? baseLabel
-      : `${baseLabel} ${suffix - 1}`;
+    candidateId === slugify(baseLabel) ? baseLabel : `${baseLabel} ${suffix - 1}`;
 
   return persistTest(
     project,
@@ -613,9 +586,7 @@ async function createSnippet(project, requestedName) {
   }
 
   const candidateName =
-    candidateId === slugify(baseLabel)
-      ? baseLabel
-      : `${baseLabel} ${suffix - 1}`;
+    candidateId === slugify(baseLabel) ? baseLabel : `${baseLabel} ${suffix - 1}`;
 
   return persistSnippet(
     project,
@@ -695,20 +666,6 @@ function getErrorMessage(error) {
   }
 
   return 'Unknown error';
-}
-
-function getRunErrorMessage(error) {
-  const message = getErrorMessage(error);
-
-  if (
-    message.includes('MachPortRendezvous') ||
-    message.includes('Target page, context or browser has been closed')
-  ) {
-    return 'Chromium could not launch in the current runtime. Start the app directly on your local machine and retry.';
-  }
-
-  const firstLine = message.split('\n').find((line) => line.trim());
-  return firstLine ? firstLine.trim() : 'Run failed.';
 }
 
 const mutatingMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -821,13 +778,9 @@ async function handleApi(request, response) {
 
     if (request.method === 'GET' && runEventsMatch) {
       const runId = normalizeRunId(runEventsMatch[1]);
-      const requestedEventId = Number.parseInt(
-        String(request.headers['last-event-id'] ?? ''),
-        10,
-      );
-      const lastEventId = Number.isFinite(requestedEventId) && requestedEventId > 0
-        ? requestedEventId
-        : 0;
+      const requestedEventId = Number.parseInt(String(request.headers['last-event-id'] ?? ''), 10);
+      const lastEventId =
+        Number.isFinite(requestedEventId) && requestedEventId > 0 ? requestedEventId : 0;
 
       response.statusCode = 200;
       response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -1087,8 +1040,6 @@ async function start() {
     announce();
 
     return { server, url: launchUrl(securityContext, host, boundPort), port: boundPort, host };
-
-    return;
   }
 
   const vite = await createViteServer({

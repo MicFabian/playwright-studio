@@ -2,9 +2,7 @@
   "id": "wait-for-dashboard",
   "name": "Wait for dashboard",
   "description": "Confirm the dashboard headline matches the expected value.",
-  "params": [
-    "headline"
-  ],
+  "params": ["headline"],
   "code": "await expect(page.locator('[data-testid=\"dashboard-title\"]')).toContainText(headline);",
   "updatedAt": "2026-03-19T14:15:00.000Z"
 }

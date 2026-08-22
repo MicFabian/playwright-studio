@@ -142,9 +142,7 @@ function readLocatorChain(expression: Expression): LocatorChain | null {
 
     if (method === 'nth') {
       const index = Number(args[0]?.getText());
-      return Number.isFinite(index)
-        ? { ...inner, target: { ...inner.target, nth: index } }
-        : null;
+      return Number.isFinite(index) ? { ...inner, target: { ...inner.target, nth: index } } : null;
     }
 
     if (method === 'filter') {
@@ -193,7 +191,11 @@ function readLocatorChain(expression: Expression): LocatorChain | null {
 
       const exact = options.getProperty('exact');
 
-      if (exact && Node.isPropertyAssignment(exact) && exact.getInitializer()?.getText() === 'true') {
+      if (
+        exact &&
+        Node.isPropertyAssignment(exact) &&
+        exact.getInitializer()?.getText() === 'true'
+      ) {
         (base as { exact?: boolean }).exact = true;
       }
     }
@@ -208,9 +210,7 @@ function readLocatorChain(expression: Expression): LocatorChain | null {
 
   if (method in TEXT_LOCATORS) {
     const value = valueOf(args[0]);
-    return value
-      ? { target: { base: { by: TEXT_LOCATORS[method], text: value } }, root }
-      : null;
+    return value ? { target: { base: { by: TEXT_LOCATORS[method], text: value } }, root } : null;
   }
 
   if (method === 'locator') {
@@ -228,7 +228,7 @@ function readAssertion(call: CallExpression): FlowStep | null {
     return null;
   }
 
-  let matcher = callee.getName();
+  const matcher = callee.getName();
   let subjectHolder = callee.getExpression();
   let negated = false;
 
@@ -439,13 +439,15 @@ function convertStatements(statements: Statement[], context: ConversionContext):
       const thenBlock = statement.getThenStatement();
       const elseBlock = statement.getElseStatement();
 
-      let predicate: FlowStep | null = null;
       let visibilityTarget: LocatorTarget | null = null;
       let negated = false;
 
       let probe: Expression = condition;
 
-      if (Node.isPrefixUnaryExpression(probe) && probe.getOperatorToken() === SyntaxKind.ExclamationToken) {
+      if (
+        Node.isPrefixUnaryExpression(probe) &&
+        probe.getOperatorToken() === SyntaxKind.ExclamationToken
+      ) {
         negated = true;
         probe = unwrapAwait(probe.getOperand());
       }
@@ -562,7 +564,10 @@ function convertStatements(statements: Statement[], context: ConversionContext):
             const method = callee.getName();
             const chain = readLocatorChain(callee.getExpression());
 
-            if (chain && (method === 'textContent' || method === 'inputValue' || method === 'count')) {
+            if (
+              chain &&
+              (method === 'textContent' || method === 'inputValue' || method === 'count')
+            ) {
               context.structured += 1;
               steps.push({
                 id: nextStepId('extract'),

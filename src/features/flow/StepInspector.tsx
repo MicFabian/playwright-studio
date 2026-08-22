@@ -160,7 +160,13 @@ function LocatorEditor({
 
   const setStrategy = (by: LocatorRef['by']) => {
     const current = valueText(
-      'value' in base ? base.value : 'text' in base ? base.text : 'selector' in base ? base.selector : undefined,
+      'value' in base
+        ? base.value
+        : 'text' in base
+          ? base.text
+          : 'selector' in base
+            ? base.selector
+            : undefined,
     );
     const literal: ValueExpr = { source: 'literal', value: current };
 
@@ -228,7 +234,10 @@ function LocatorEditor({
           <select
             value={base.role}
             onChange={(event) =>
-              onChange({ ...target, base: { ...base, role: event.target.value as typeof base.role } })
+              onChange({
+                ...target,
+                base: { ...base, role: event.target.value as typeof base.role },
+              })
             }
           >
             {ROLES.map((role) => (
@@ -357,7 +366,10 @@ export function StepInspector({ snippets = [] }: { snippets?: SnippetItem[] }) {
 
       {step.kind === 'press' ? (
         <Field label="Key">
-          <input value={step.key} onChange={(event) => update({ key: event.target.value } as Partial<FlowStep>)} />
+          <input
+            value={step.key}
+            onChange={(event) => update({ key: event.target.value } as Partial<FlowStep>)}
+          />
         </Field>
       ) : null}
 

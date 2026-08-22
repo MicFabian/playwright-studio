@@ -57,7 +57,12 @@ export function WorkspaceExplorer({
 
       <header className="explorer__head">
         <h2>Snippets</h2>
-        <button type="button" onClick={onCreateSnippet} aria-label="New snippet" title="New snippet">
+        <button
+          type="button"
+          onClick={onCreateSnippet}
+          aria-label="New snippet"
+          title="New snippet"
+        >
           <FilePlus size={14} aria-hidden />
         </button>
       </header>
@@ -103,7 +108,9 @@ export function WorkspaceExplorer({
       {workspace?.git.available ? (
         <footer className="explorer__git">
           <span className="explorer__branch">{workspace.git.branch ?? 'detached'}</span>
-          <span>{workspace.git.dirty ? `${workspace.git.changedFiles.length} changed` : 'clean'}</span>
+          <span>
+            {workspace.git.dirty ? `${workspace.git.changedFiles.length} changed` : 'clean'}
+          </span>
         </footer>
       ) : null}
     </nav>

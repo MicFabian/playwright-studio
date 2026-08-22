@@ -1,0 +1,7 @@
+dist
+release
+node_modules
+packages/*/dist
+tests/generated
+playwright-lowcode/runs
+package-lock.json

@@ -121,7 +121,9 @@ export function DataPanel() {
                         update({
                           ...data,
                           cases: data.cases.map((candidate, index) =>
-                            index === rowIndex ? { ...candidate, name: event.target.value } : candidate,
+                            index === rowIndex
+                              ? { ...candidate, name: event.target.value }
+                              : candidate,
                           ),
                         })
                       }
@@ -139,7 +141,10 @@ export function DataPanel() {
                               index === rowIndex
                                 ? {
                                     ...candidate,
-                                    values: { ...candidate.values, [column.name]: event.target.value },
+                                    values: {
+                                      ...candidate.values,
+                                      [column.name]: event.target.value,
+                                    },
                                   }
                                 : candidate,
                             ),
