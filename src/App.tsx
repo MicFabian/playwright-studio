@@ -11,6 +11,7 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
   Background,
+  type EdgeTypes,
   type ReactFlowInstance,
   Controls,
   type EdgeChange,
@@ -22,6 +23,7 @@ import {
   ReactFlowProvider,
 } from '@xyflow/react';
 import { FlowNodeCard } from './components/FlowNodeCard';
+import { InsertionEdge } from './components/InsertionEdge';
 import { Inspector } from './components/Inspector';
 import { SideRail } from './components/SideRail';
 import {
@@ -40,10 +42,13 @@ import {
   blockCatalog,
   blockLibrary,
   createSnippetStepCodeFromBlock,
+  createSnippetStepNode,
   createConnectedEdge,
   createFlowNode,
   createSnippetNode,
   generatePlaywrightSpec,
+  normalizeNode,
+  serializeNodeToCode,
   splitSnippetCodeIntoSteps,
 } from './lib/flow';
 import type {
@@ -103,13 +108,24 @@ function AppShell() {
   const [runError, setRunError] = useState<string | null>(null);
   const [liveRunMode, setLiveRunMode] = useState(true);
   const [canvasDropActive, setCanvasDropActive] = useState(false);
+  const [quickInsertDragging, setQuickInsertDragging] = useState(false);
+  const [activeInsertEdgeId, setActiveInsertEdgeId] = useState<string | null>(null);
   const [isCanvasLocked, setIsCanvasLocked] = useState(false);
   const [leftColumnWidth, setLeftColumnWidth] = useState(286);
   const [rightColumnWidth, setRightColumnWidth] = useState(324);
   const [activeResizer, setActiveResizer] = useState<null | 'left' | 'right'>(null);
-  const [generatedSpec, setGeneratedSpec] = useState('');
   const runPollInFlightRef = useRef(false);
   const appShellRef = useRef<HTMLDivElement | null>(null);
+  const insertionEdgeStateRef = useRef({
+    activeInsertEdgeId: null as string | null,
+    quickInsertDragging: false,
+    isCanvasLocked: false,
+  });
+  const insertionEdgeHandlersRef = useRef({
+    onInsertDragLeave: (_edgeId: string, _event: ReactDragEvent<HTMLDivElement>) => {},
+    onInsertDragOver: (_edgeId: string, _event: ReactDragEvent<HTMLDivElement>) => {},
+    onInsertDrop: (_edgeId: string, _event: ReactDragEvent<HTMLDivElement>) => {},
+  });
   const updateNodeTitleRef = useRef<(nodeId: string, value: string) => void>(
     () => undefined,
   );
@@ -124,27 +140,86 @@ function AppShell() {
   >(() => undefined);
   const removeSnippetStepRef = useRef<(nodeId: string) => void>(() => undefined);
   const nodesRef = useRef<FlowNode[]>([]);
+  insertionEdgeStateRef.current = {
+    activeInsertEdgeId,
+    quickInsertDragging,
+    isCanvasLocked,
+  };
 
-  const activeTest =
-    workspace?.tests.find((test) => test.id === activeTestId) ?? null;
+  const activeTest = useMemo(
+    () => workspace?.tests.find((test) => test.id === activeTestId) ?? null,
+    [workspace, activeTestId],
+  );
   const activeTestName = activeTest?.name || 'Untitled flow';
-  const selectedSnippet =
-    workspace?.snippets.find((snippet) => snippet.id === activeSnippetId) ?? null;
+  const selectedSnippet = useMemo(
+    () => workspace?.snippets.find((snippet) => snippet.id === activeSnippetId) ?? null,
+    [workspace, activeSnippetId],
+  );
   const deferredSnippetQuery = useDeferredValue(snippetQuery);
   const normalizedSnippetQuery = deferredSnippetQuery.trim().toLowerCase();
-  const filteredSnippets = workspace
-    ? normalizedSnippetQuery
-      ? workspace.snippets.filter((snippet) =>
-          [snippet.name, snippet.description, snippet.filePath || '']
-            .join(' ')
-            .toLowerCase()
-            .includes(normalizedSnippetQuery),
-        )
-      : workspace.snippets
-    : [];
-  const selectedNode = nodes.find((node) => node.selected);
+  const filteredSnippets = useMemo(() => {
+    if (!workspace) {
+      return [];
+    }
+
+    if (!normalizedSnippetQuery) {
+      return workspace.snippets;
+    }
+
+    return workspace.snippets.filter((snippet) =>
+      [snippet.name, snippet.description, snippet.filePath || '']
+        .join(' ')
+        .toLowerCase()
+        .includes(normalizedSnippetQuery),
+    );
+  }, [workspace, normalizedSnippetQuery]);
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.selected),
+    [nodes],
+  );
+  const generatedSpec = useMemo(
+    () => generatePlaywrightSpec(activeTestName, nodes, edges),
+    [activeTestName, nodes, edges],
+  );
   const isSnippetCanvasActive = Boolean(activeSnippetId && selectedSnippet);
   const inspectorSelectedNode = isSnippetCanvasActive ? undefined : selectedNode;
+  const activeRunStep =
+    runState && runState.currentStepIndex != null
+      ? runState.stepResults[runState.currentStepIndex] ?? null
+      : null;
+  const completedRunSteps =
+    runState?.stepResults.filter(
+      (step) => step.status === 'passed' || step.status === 'failed',
+    ).length ?? 0;
+  const runSummaryLabel =
+    runStartState === 'starting'
+      ? 'Starting run'
+      : runState?.status === 'queued'
+        ? 'Queued'
+        : runState?.status === 'running'
+          ? 'Running'
+          : runState?.status === 'passed'
+            ? 'Run passed'
+            : runState?.status === 'failed'
+              ? 'Run failed'
+              : 'Ready to run';
+  const runSummaryTone =
+    runStartState === 'error' || runState?.status === 'failed'
+      ? ' is-error'
+      : runState?.status === 'passed'
+        ? ' is-success'
+        : runStartState === 'starting' ||
+            runState?.status === 'queued' ||
+            runState?.status === 'running'
+          ? ' is-info'
+          : '';
+  const runProgressLabel = runState
+    ? activeRunStep
+      ? `Step ${activeRunStep.index + 1}/${runState.totalSteps}`
+      : `${completedRunSteps}/${runState.totalSteps} done`
+    : nodes.length > 0
+      ? `${nodes.length} blocks`
+      : 'No blocks';
   const formatFlowPathLabel = (filePath: string) => {
     const fileNameFromPath = (path: string) => {
       const normalized = path.split('/').filter(Boolean);
@@ -212,16 +287,83 @@ function AppShell() {
     : snippetSaveState === 'saved'
       ? 'Snippet saved'
       : 'In sync';
-  const appShellStyle = {
-    '--left-column-width': `${leftColumnWidth}px`,
-    '--right-column-width': `${rightColumnWidth}px`,
-  } as CSSProperties;
+  const appShellStyle = useMemo(
+    () =>
+      ({
+        '--left-column-width': `${leftColumnWidth}px`,
+        '--right-column-width': `${rightColumnWidth}px`,
+      }) as CSSProperties,
+    [leftColumnWidth, rightColumnWidth],
+  );
 
-  const isSnippetStepNode = (node: FlowNode) =>
-    node.data.kind === 'snippet' && Boolean(node.data.snippetStep);
+  const persistedNodeSignature = (node: FlowNode) => {
+    const normalizedNode = normalizeNode(node);
 
-  const getSnippetStepCode = (node: FlowNode) =>
-    node.data.fields.find((field) => field.key === 'code')?.value || '';
+    return {
+      id: normalizedNode.id,
+      type: normalizedNode.type,
+      position: normalizedNode.position,
+      data: normalizedNode.data,
+    };
+  };
+
+  const persistedEdgeSignature = (edge: FlowEdge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    type: edge.type,
+    animated: edge.animated ?? false,
+  });
+
+  const persistedFlowSignature = (nextNodes: FlowNode[], nextEdges: FlowEdge[]) =>
+    JSON.stringify({
+      nodes: nextNodes.map(persistedNodeSignature),
+      edges: nextEdges.map(persistedEdgeSignature),
+    });
+
+  const isSnippetPersistedEqual = (left: SnippetItem, right: SnippetItem) =>
+    left.name === right.name &&
+    left.description === right.description &&
+    left.code === right.code &&
+    left.filePath === right.filePath &&
+    left.updatedAt === right.updatedAt &&
+    left.params.length === right.params.length &&
+    left.params.every((param, index) => param === right.params[index]);
+
+  const activeTestSignature = useMemo(
+    () =>
+      activeTest
+        ? persistedFlowSignature(activeTest.nodes, activeTest.edges)
+        : null,
+    [activeTest],
+  );
+
+  const isSnippetStepNode = (node: FlowNode) => Boolean(node.data.snippetStep);
+
+  const isPersistedNodeChange = (change: NodeChange<FlowNode>) => {
+    switch (change.type) {
+      case 'add':
+      case 'remove':
+      case 'replace':
+      case 'position':
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  const isPersistedEdgeChange = (change: EdgeChange<FlowEdge>) => {
+    switch (change.type) {
+      case 'add':
+      case 'remove':
+      case 'replace':
+        return true;
+      default:
+        return false;
+    }
+  };
+
+  const getSnippetStepCode = (node: FlowNode) => serializeNodeToCode(node);
 
   const orderSnippetStepNodes = (sourceNodes: FlowNode[]) =>
     sourceNodes
@@ -284,25 +426,10 @@ function AppShell() {
         x: 132 + index * 294,
         y: 220 + (index % 2) * 14,
       };
-      const node = createFlowNode('snippet', position, {
-        title: `Step ${index + 1}`,
-        description: 'Edit this snippet action directly on canvas.',
-        accent: '#f0c36c',
-        codeLabel: `step ${index + 1}`,
-        status: 'ready',
-        fields: [
-          {
-            key: 'code',
-            label: 'Code',
-            value: stepValue,
-            placeholder: "await page.locator('[data-testid=\"target\"]').click();",
-            multiline: true,
-          },
-        ],
+      const node = createSnippetStepNode(stepValue, position, {
         snippetRef: snippet.id,
         snippetStep: true,
         snippetStepIndex: index,
-        snippetCode: '',
       });
 
       return {
@@ -376,12 +503,6 @@ function AppShell() {
     const timeout = window.setTimeout(() => setGitActionState('idle'), 1600);
     return () => window.clearTimeout(timeout);
   }, [gitActionState]);
-
-  useEffect(() => {
-    setGeneratedSpec(
-      generatePlaywrightSpec(activeTestName, nodes, edges),
-    );
-  }, [activeTestName, nodes, edges]);
 
   useEffect(() => {
     if (!isSnippetCanvasActive || !selectedSnippet) {
@@ -514,18 +635,25 @@ function AppShell() {
 
     try {
       const loaded = await fetchWorkspace();
+      const normalizedTests = loaded.tests.map((test) => ({
+        ...test,
+        nodes: test.nodes.map(normalizeNode),
+      }));
       const nextActiveId =
-        preferredTestId && loaded.tests.some((test) => test.id === preferredTestId)
+        preferredTestId && normalizedTests.some((test) => test.id === preferredTestId)
           ? preferredTestId
-          : loaded.tests[0]?.id ?? null;
+          : normalizedTests[0]?.id ?? null;
       const nextActiveTest =
-        loaded.tests.find((test) => test.id === nextActiveId) ?? null;
+        normalizedTests.find((test) => test.id === nextActiveId) ?? null;
 
-      setWorkspace(loaded);
+      setWorkspace({
+        ...loaded,
+        tests: normalizedTests,
+      });
       setActiveTestId(nextActiveId);
       setNodes(nextActiveTest?.nodes ?? []);
       setEdges(nextActiveTest?.edges ?? []);
-      setDirtyTests(Object.fromEntries(loaded.tests.map((test) => [test.id, false])));
+      setDirtyTests(Object.fromEntries(normalizedTests.map((test) => [test.id, false])));
       setDirtySnippets(
         Object.fromEntries(loaded.snippets.map((snippet) => [snippet.id, false])),
       );
@@ -543,6 +671,9 @@ function AppShell() {
   }
 
   function updateActiveTest(nextNodes: FlowNode[], nextEdges: FlowEdge[], dirty: boolean) {
+    const nextSignature = dirty ? persistedFlowSignature(nextNodes, nextEdges) : null;
+    const shouldMarkDirty = dirty && nextSignature !== activeTestSignature;
+
     setNodes(nextNodes);
     setEdges(nextEdges);
 
@@ -551,6 +682,10 @@ function AppShell() {
     }
 
     if (!activeTestId) {
+      return;
+    }
+
+    if (!shouldMarkDirty) {
       return;
     }
 
@@ -574,17 +709,19 @@ function AppShell() {
       };
     });
 
-    if (dirty) {
-      setDirtyTests((current) => ({
-        ...current,
-        [activeTestId]: true,
-      }));
-      setSaveState('idle');
-    }
+    setDirtyTests((current) => ({
+      ...current,
+      [activeTestId]: true,
+    }));
+    setSaveState('idle');
   }
 
   function selectTest(testId: string) {
     const nextTest = workspace?.tests.find((test) => test.id === testId) ?? null;
+
+    if (activeTestId === testId && !isSnippetCanvasActive) {
+      return;
+    }
 
     setActiveTestId(testId);
     setActiveSnippetId(null);
@@ -708,6 +845,22 @@ function AppShell() {
     updateActiveTest(nextNodes, nextEdges, true);
   }
 
+  function createInteractiveEdge(source: string, target: string): FlowEdge {
+    return {
+      id: crypto.randomUUID(),
+      source,
+      target,
+      type: 'smoothstep',
+      animated: true,
+    };
+  }
+
+  function endQuickInsertDrag() {
+    setQuickInsertDragging(false);
+    setCanvasDropActive(false);
+    setActiveInsertEdgeId(null);
+  }
+
   function beginQuickInsertDrag(
     event: ReactDragEvent<HTMLButtonElement>,
     payload: QuickInsertDragPayload,
@@ -721,6 +874,8 @@ function AppShell() {
     const serialized = JSON.stringify(payload);
     event.dataTransfer.setData(QUICK_INSERT_MIME, serialized);
     event.dataTransfer.setData('text/plain', serialized);
+    setQuickInsertDragging(true);
+    setActiveInsertEdgeId(null);
   }
 
   function readQuickInsertPayload(
@@ -797,7 +952,7 @@ function AppShell() {
 
   function handleCanvasDrop(event: ReactDragEvent<HTMLDivElement>) {
     event.preventDefault();
-    setCanvasDropActive(false);
+    endQuickInsertDrag();
 
     if (!reactFlowInstance || isCanvasLocked || (!activeTestId && !isSnippetCanvasActive)) {
       return;
@@ -856,6 +1011,140 @@ function AppShell() {
     appendNode(createSnippetNode(snippet, snappedPosition));
   }
 
+  function handleInsertEdgeDragOver(
+    edgeId: string,
+    event: ReactDragEvent<HTMLDivElement>,
+  ) {
+    if (isCanvasLocked || (!activeTestId && !isSnippetCanvasActive)) {
+      return;
+    }
+
+    const payload = readQuickInsertPayload(event);
+
+    if (!payload) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
+    setCanvasDropActive(false);
+
+    if (activeInsertEdgeId !== edgeId) {
+      setActiveInsertEdgeId(edgeId);
+    }
+  }
+
+  function handleInsertEdgeDragLeave(
+    edgeId: string,
+    event: ReactDragEvent<HTMLDivElement>,
+  ) {
+    event.stopPropagation();
+
+    const nextTarget = event.relatedTarget;
+
+    if (
+      nextTarget instanceof Node &&
+      event.currentTarget.contains(nextTarget)
+    ) {
+      return;
+    }
+
+    if (activeInsertEdgeId === edgeId) {
+      setActiveInsertEdgeId(null);
+    }
+  }
+
+  function handleInsertOnEdge(
+    edgeId: string,
+    event: ReactDragEvent<HTMLDivElement>,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const payload = readQuickInsertPayload(event);
+    endQuickInsertDrag();
+
+    if (!payload) {
+      return;
+    }
+
+    const edge = edges.find((entry) => entry.id === edgeId);
+
+    if (!edge) {
+      return;
+    }
+
+    if (isSnippetCanvasActive && selectedSnippet) {
+      const ordered = orderSnippetStepNodes(nodes);
+      const targetIndex = ordered.findIndex((node) => node.id === edge.target);
+      const sourceIndex = ordered.findIndex((node) => node.id === edge.source);
+      const insertIndex =
+        targetIndex >= 0 ? targetIndex : sourceIndex >= 0 ? sourceIndex + 1 : undefined;
+
+      if (payload.type === 'block') {
+        insertSnippetStepValues(
+          [createSnippetStepCodeFromBlock(payload.kind)],
+          insertIndex,
+        );
+        return;
+      }
+
+      const snippet = workspace?.snippets.find(
+        (entry) => entry.id === payload.snippetId,
+      );
+
+      if (!snippet) {
+        return;
+      }
+
+      insertSnippetStepValues(
+        splitSnippetCodeIntoSteps(snippet.code),
+        insertIndex,
+      );
+      return;
+    }
+
+    const sourceNode = nodes.find((node) => node.id === edge.source);
+    const targetNode = nodes.find((node) => node.id === edge.target);
+
+    if (!sourceNode || !targetNode) {
+      return;
+    }
+
+    const nextPosition = {
+      x: Math.round(((sourceNode.position.x + targetNode.position.x) / 2) / 24) * 24,
+      y: Math.round(((sourceNode.position.y + targetNode.position.y) / 2) / 24) * 24,
+    };
+    const insertedNode =
+      payload.type === 'block'
+        ? createFlowNode(payload.kind, nextPosition)
+        : (() => {
+            const snippet = workspace?.snippets.find(
+              (entry) => entry.id === payload.snippetId,
+            );
+            return snippet ? createSnippetNode(snippet, nextPosition) : null;
+          })();
+
+    if (!insertedNode) {
+      return;
+    }
+
+    const nextNodes = nodes
+      .map((node) => ({ ...node, selected: false }))
+      .concat({
+        ...insertedNode,
+        selected: true,
+      });
+    const remainingEdges = edges.filter((entry) => entry.id !== edgeId);
+    const nextEdges = remainingEdges.concat([
+      createInteractiveEdge(edge.source, insertedNode.id),
+      createInteractiveEdge(insertedNode.id, edge.target),
+    ]);
+
+    updateActiveTest(nextNodes, nextEdges, true);
+  }
+
   function handleAddBlock(kind: FlowBlockKind) {
     if (isCanvasLocked) {
       return;
@@ -910,6 +1199,10 @@ function AppShell() {
   }
 
   function handleEditSnippet(snippetId: string) {
+    if (activeSnippetId === snippetId && isSnippetCanvasActive) {
+      return;
+    }
+
     setActiveSnippetId(snippetId);
     setRunError(null);
     setRunStartState('idle');
@@ -928,7 +1221,7 @@ function AppShell() {
     }
 
     const nextNodes = applyNodeChanges(changes, nodes);
-    const dirty = changes.some((change) => change.type !== 'select');
+    const dirty = changes.some(isPersistedNodeChange);
 
     if (isSnippetCanvasActive) {
       setNodes(nextNodes);
@@ -949,7 +1242,7 @@ function AppShell() {
     }
 
     const nextEdges = applyEdgeChanges(changes, edges);
-    const dirty = changes.some((change) => change.type !== 'select');
+    const dirty = changes.some(isPersistedEdgeChange);
 
     if (isSnippetCanvasActive) {
       setEdges(nextEdges);
@@ -1095,18 +1388,41 @@ function AppShell() {
     snippetId: string,
     transform: (snippet: SnippetItem) => SnippetItem,
   ) {
+    let didChange = false;
+
     setWorkspace((current) => {
       if (!current) {
         return current;
       }
 
+      const nextSnippets = current.snippets.map((snippet) => {
+        if (snippet.id !== snippetId) {
+          return snippet;
+        }
+
+        const nextSnippet = transform(snippet);
+
+        if (!didChange && !isSnippetPersistedEqual(snippet, nextSnippet)) {
+          didChange = true;
+        }
+
+        return nextSnippet;
+      });
+
+      if (!didChange) {
+        return current;
+      }
+
       return {
         ...current,
-        snippets: current.snippets.map((snippet) =>
-          snippet.id === snippetId ? transform(snippet) : snippet,
-        ),
+        snippets: nextSnippets,
       };
     });
+
+    if (!didChange) {
+      return;
+    }
+
     setDirtySnippets((current) => ({
       ...current,
       [snippetId]: true,
@@ -1139,6 +1455,10 @@ function AppShell() {
   }
 
   function handleUpdateSnippetName(snippetId: string, value: string) {
+    if (selectedSnippet && snippetId === selectedSnippet.id && selectedSnippet.name === value) {
+      return;
+    }
+
     updateWorkspaceSnippet(snippetId, (snippet) => ({
       ...snippet,
       name: value,
@@ -1146,6 +1466,14 @@ function AppShell() {
   }
 
   function handleUpdateSnippetDescription(snippetId: string, value: string) {
+    if (
+      selectedSnippet &&
+      snippetId === selectedSnippet.id &&
+      selectedSnippet.description === value
+    ) {
+      return;
+    }
+
     updateWorkspaceSnippet(snippetId, (snippet) => ({
       ...snippet,
       description: value,
@@ -1153,12 +1481,23 @@ function AppShell() {
   }
 
   function handleUpdateSnippetParams(snippetId: string, value: string) {
+    const normalizedParams = value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    if (
+      selectedSnippet &&
+      snippetId === selectedSnippet.id &&
+      selectedSnippet.params.length === normalizedParams.length &&
+      selectedSnippet.params.every((param, index) => param === normalizedParams[index])
+    ) {
+      return;
+    }
+
     updateWorkspaceSnippet(snippetId, (snippet) => ({
       ...snippet,
-      params: value
-        .split(',')
-        .map((entry) => entry.trim())
-        .filter(Boolean),
+      params: normalizedParams,
     }));
   }
 
@@ -1313,6 +1652,11 @@ function AppShell() {
   updateSnippetCodeRef.current = handleUpdateSnippetCode;
   insertSnippetStepRef.current = handleInsertSnippetStep;
   removeSnippetStepRef.current = handleRemoveSnippetStep;
+  insertionEdgeHandlersRef.current = {
+    onInsertDragLeave: handleInsertEdgeDragLeave,
+    onInsertDragOver: handleInsertEdgeDragOver,
+    onInsertDrop: handleInsertOnEdge,
+  };
 
   const nodeTypes = useMemo<NodeTypes>(
     () => ({
@@ -1336,6 +1680,29 @@ function AppShell() {
           }
         />
       ),
+    }),
+    [],
+  );
+
+  const edgeTypes = useMemo<EdgeTypes>(
+    () => ({
+      smoothstep: (props) => {
+        const insertionState = insertionEdgeStateRef.current;
+        const insertionHandlers = insertionEdgeHandlersRef.current;
+
+        return (
+          <InsertionEdge
+            {...props}
+            insertionActive={insertionState.activeInsertEdgeId === props.id}
+            insertionVisible={
+              insertionState.quickInsertDragging && !insertionState.isCanvasLocked
+            }
+            onInsertDragLeave={insertionHandlers.onInsertDragLeave}
+            onInsertDragOver={insertionHandlers.onInsertDragOver}
+            onInsertDrop={insertionHandlers.onInsertDrop}
+          />
+        );
+      },
     }),
     [],
   );
@@ -1387,7 +1754,6 @@ function AppShell() {
         onSelectTest={selectTest}
         onSnippetQueryChange={setSnippetQuery}
         onCommitMessageChange={setCommitMessage}
-        onAddSnippet={handleAddSnippet}
         onEditSnippet={handleEditSnippet}
         onGitRefresh={handleGitRefresh}
         onGitInit={handleGitInit}
@@ -1424,6 +1790,25 @@ function AppShell() {
             </div>
 
             <div className="canvas-card__header-actions">
+              {!isSnippetCanvasActive && activeTest ? (
+                <div aria-live="polite" className="canvas-card__run-hud">
+                  <span className={`canvas-status-chip${runSummaryTone}`}>
+                    {runSummaryLabel}
+                  </span>
+                  <span className="canvas-status-chip">{runProgressLabel}</span>
+                  {!runState ? (
+                    <span className="canvas-status-chip">
+                      {liveRunMode ? 'Live browser' : 'Headless'}
+                    </span>
+                  ) : null}
+                  {activeRunStep?.title ? (
+                    <span className="canvas-status-chip is-subtle">
+                      {activeRunStep.title}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+
               {isSnippetCanvasActive ? (
                 <>
                   <span className={`canvas-status-chip${isActiveSnippetDirty ? ' is-warn' : ''}`}>
@@ -1488,7 +1873,7 @@ function AppShell() {
                       kind,
                     })
                   }
-                  onDragEnd={() => setCanvasDropActive(false)}
+                  onDragEnd={endQuickInsertDrag}
                   onClick={() => handleAddBlock(kind)}
                 >
                   <span>{blockCatalog[kind].title}</span>
@@ -1526,11 +1911,15 @@ function AppShell() {
                             snippetId: snippet.id,
                           })
                         }
-                        onDragEnd={() => setCanvasDropActive(false)}
+                        onDragEnd={endQuickInsertDrag}
                         onClick={() => handleAddSnippet(snippet)}
                       >
                         <span>{snippet.name}</span>
-                        <small>{snippet.filePath || 'snippet'}</small>
+                        <small>
+                          {formatFlowPathLabel(
+                            snippet.filePath || `${snippet.name}.snippet.json`,
+                          )}
+                        </small>
                       </button>
                     ))}
                   </div>
@@ -1545,7 +1934,7 @@ function AppShell() {
         </div>
 
         <div
-          className={`canvas-card__body${canvasDropActive ? ' is-drop-target' : ''}${isCanvasLocked ? ' is-locked' : ''}`}
+          className={`canvas-card__body${canvasDropActive ? ' is-drop-target' : ''}${quickInsertDragging ? ' is-inserting' : ''}${isCanvasLocked ? ' is-locked' : ''}`}
           data-testid="canvas-dropzone"
           onDragLeave={handleCanvasDragLeave}
           onDragOver={handleCanvasDragOver}
@@ -1569,6 +1958,7 @@ function AppShell() {
                   )
                 : undefined
             }
+            edgeTypes={edgeTypes}
             nodeTypes={nodeTypes}
             snapToGrid
             snapGrid={[24, 24]}

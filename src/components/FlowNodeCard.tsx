@@ -13,7 +13,11 @@ import {
   ShieldCheck,
   Type,
 } from 'lucide-react';
-import { splitSnippetCodeIntoSteps } from '../lib/flow';
+import {
+  createSnippetStepNode,
+  serializeNodeToCode,
+  splitSnippetCodeIntoSteps,
+} from '../lib/flow';
 import type { FlowBlockKind, FlowNode } from '../types';
 
 const iconMap: Record<FlowBlockKind, typeof Globe2> = {
@@ -24,6 +28,8 @@ const iconMap: Record<FlowBlockKind, typeof Globe2> = {
   extract: DatabaseZap,
   condition: GitBranch,
   loop: Repeat,
+  code: Braces,
+  freetext: Braces,
   snippet: Braces,
 };
 
@@ -45,9 +51,9 @@ export function FlowNodeCard({
   onInsertSnippetStep,
   onRemoveSnippetStep,
 }: FlowNodeCardProps) {
+  const isSnippetStep = Boolean(data.snippetStep);
+  const isSnippet = data.kind === 'snippet' && !isSnippetStep;
   const Icon = iconMap[data.kind];
-  const isSnippet = data.kind === 'snippet';
-  const isSnippetStep = isSnippet && Boolean(data.snippetStep);
   const [snippetExpanded, setSnippetExpanded] = useState(false);
   const [snippetEditMode, setSnippetEditMode] = useState(false);
   const snippetActions = useMemo(
@@ -55,8 +61,28 @@ export function FlowNodeCard({
     [data.snippetCode],
   );
   const snippetInputs = data.fields.filter((field) => field.value);
-  const previewFields = data.fields.filter((field) => field.value).slice(0, 2);
-  const snippetStepCode = data.fields.find((field) => field.key === 'code')?.value || '';
+  const previewFields = data.fields.filter((field) => field.value).slice(0, 3);
+  const snippetActionSummary = {
+    key: 'snippet-actions',
+    label: 'Actions',
+    value: `${snippetActions.length} ${snippetActions.length === 1 ? 'block' : 'blocks'}`,
+  };
+  const collapsedFields =
+    isSnippet && previewFields.length > 0
+      ? [...previewFields.slice(0, 2), snippetActionSummary]
+      : previewFields.length > 0
+        ? previewFields
+        : [
+            {
+              key: 'snippet-inputs',
+              label: 'Inputs',
+              value:
+                snippetInputs.length > 0
+                  ? snippetInputs.map((field) => field.label).join(', ')
+                  : 'No inputs',
+            },
+            snippetActionSummary,
+          ];
   const snippetStepIndex =
     typeof data.snippetStepIndex === 'number' ? data.snippetStepIndex : 0;
 
@@ -103,6 +129,69 @@ export function FlowNodeCard({
     updateSnippetActions(nextActions);
   }
 
+  function renderFields(
+    editable: boolean,
+    fields = editable ? data.fields : previewFields,
+    onFieldChange: ((fieldKey: string, value: string) => void) | undefined =
+      editable ? (fieldKey, value) => onUpdateField?.(id, fieldKey, value) : undefined,
+    testIdPrefix = editable ? `canvas-inline-field-${id}` : undefined,
+  ) {
+    if (fields.length === 0) {
+      return null;
+    }
+
+    return fields.map((field) =>
+      editable ? (
+        <label
+          className="flow-node-card__field is-editable"
+          key={field.key}
+        >
+          <span>{field.label}</span>
+          {field.control === 'select' && field.options ? (
+            <select
+              className="flow-node-card__field-input nodrag nopan"
+              data-testid={testIdPrefix ? `${testIdPrefix}-${field.key}` : undefined}
+              value={field.value}
+              onChange={(event) => onFieldChange?.(field.key, event.target.value)}
+            >
+              {field.options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : field.multiline ? (
+            <textarea
+              className="flow-node-card__field-input nowheel nodrag nopan"
+              data-testid={testIdPrefix ? `${testIdPrefix}-${field.key}` : undefined}
+              placeholder={field.placeholder}
+              value={field.value}
+              onChange={(event) => onFieldChange?.(field.key, event.target.value)}
+            />
+          ) : (
+            <input
+              className="flow-node-card__field-input nodrag nopan"
+              data-testid={testIdPrefix ? `${testIdPrefix}-${field.key}` : undefined}
+              placeholder={field.placeholder}
+              type="text"
+              value={field.value}
+              onChange={(event) => onFieldChange?.(field.key, event.target.value)}
+            />
+          )}
+        </label>
+      ) : (
+        <div className="flow-node-card__field" key={field.key}>
+          <span>{field.label}</span>
+          <strong
+            className={field.key === 'code' || field.multiline ? 'flow-node-card__field-value--code' : undefined}
+          >
+            {field.value || field.placeholder || 'Unset'}
+          </strong>
+        </div>
+      ),
+    );
+  }
+
   return (
     <div
       className={`flow-node-card${selected ? ' is-selected' : ''}${isSnippet && !isSnippetStep && snippetExpanded ? ' is-expanded' : ''}${isSnippetStep ? ' is-step-card' : ''}`}
@@ -125,43 +214,15 @@ export function FlowNodeCard({
 
       <p className="flow-node-card__description">{data.description}</p>
 
-      {isSnippetStep ? (
-        <div className="flow-node-card__step-content">
-          <div className="flow-node-card__step-toolbar">
-            <span className="flow-node-card__step-label">{`Step ${snippetStepIndex + 1}`}</span>
-            <div className="flow-node-card__step-toolbar-actions">
-              <button
-                aria-label={`Add snippet step after ${snippetStepIndex + 1}`}
-                className="flow-node-card__step-toolbar-button nodrag nopan"
-                type="button"
-                onClick={() => onInsertSnippetStep?.(id, 'after')}
-              >
-                + Step
-              </button>
-              <button
-                aria-label={`Remove snippet step ${snippetStepIndex + 1}`}
-                className="flow-node-card__step-toolbar-button is-danger nodrag nopan"
-                type="button"
-                onClick={() => onRemoveSnippetStep?.(id)}
-              >
-                Remove
-              </button>
-            </div>
-          </div>
-          <label className="flow-node-card__step-field">
-            <span>Code</span>
-            <textarea
-              className="flow-node-card__step-input nowheel nodrag nopan"
-              data-testid={`snippet-step-card-input-${id}`}
-              placeholder={`await page.locator('[data-testid="target"]').click();`}
-              value={snippetStepCode}
-              onChange={(event) => onUpdateField?.(id, 'code', event.target.value)}
-            />
-          </label>
-        </div>
-      ) : isSnippet ? (
+      {isSnippet ? (
         <div className="flow-node-card__snippet">
-          <div className="flow-node-card__snippet-toolbar">
+          <div className="flow-node-card__fields">
+            {selected && data.fields.length > 0
+              ? renderFields(true)
+              : renderFields(false, collapsedFields)}
+          </div>
+
+          <div className="flow-node-card__inline-actions">
             <button
               aria-expanded={snippetExpanded}
               className="flow-node-card__toggle nodrag nopan"
@@ -190,12 +251,6 @@ export function FlowNodeCard({
             </button>
           </div>
 
-          {snippetInputs.length > 0 ? (
-            <p className="flow-node-card__snippet-inputs">
-              Inputs: {snippetInputs.map((field) => field.label).join(', ')}
-            </p>
-          ) : null}
-
           {snippetExpanded ? (
             <>
               <div
@@ -203,41 +258,73 @@ export function FlowNodeCard({
                 data-testid={`snippet-step-canvas-${id}`}
               >
                 {snippetActions.map((action, index) => (
-                  <article
-                    className="flow-node-card__snippet-step"
-                    key={`${id}-action-${index}`}
-                  >
-                    <div className="flow-node-card__snippet-step-header">
-                      <span>{`Step ${index + 1}`}</span>
-                      <div className="flow-node-card__snippet-step-actions">
-                        <button
-                          aria-label={`Add snippet step after ${index + 1}`}
-                          className="flow-node-card__snippet-step-button nodrag nopan"
-                          type="button"
-                          onClick={() => handleSnippetActionAdd(index)}
-                        >
-                          + Step
-                        </button>
-                        <button
-                          aria-label={`Remove snippet step ${index + 1}`}
-                          className="flow-node-card__snippet-step-button is-danger nodrag nopan"
-                          type="button"
-                          onClick={() => handleSnippetActionRemove(index)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                    <textarea
-                      className="flow-node-card__snippet-step-input nowheel"
-                      data-testid={`snippet-step-input-${id}-${index}`}
-                      placeholder={`await page.locator('[data-testid="target"]').click();`}
-                      value={action}
-                      onChange={(event) =>
-                        handleSnippetActionChange(index, event.target.value)
-                      }
-                    />
-                  </article>
+                  (() => {
+                    const actionNode = createSnippetStepNode(action, { x: 0, y: 0 });
+                    const NestedIcon = iconMap[actionNode.data.kind];
+
+                    return (
+                      <article
+                        className="flow-node-card flow-node-card--nested-step is-step-card"
+                        key={`${id}-action-${index}`}
+                        style={{ '--node-accent': actionNode.data.accent } as CSSProperties}
+                      >
+                        <div className="flow-node-card__header">
+                          <span className="flow-node-card__icon">
+                            <NestedIcon size={16} />
+                          </span>
+                          <div>
+                            <div className="flow-node-card__eyebrow">{actionNode.data.codeLabel}</div>
+                            <div className="flow-node-card__title">{actionNode.data.title}</div>
+                          </div>
+                          <span className="flow-node-card__status ready">ready</span>
+                        </div>
+                        <p className="flow-node-card__description">
+                          {actionNode.data.description}
+                        </p>
+                        <div className="flow-node-card__fields">
+                          {renderFields(
+                            true,
+                            actionNode.data.fields,
+                            (fieldKey, value) => {
+                              const nextNode: FlowNode = {
+                                ...actionNode,
+                                data: {
+                                  ...actionNode.data,
+                                  fields: actionNode.data.fields.map((field) =>
+                                    field.key === fieldKey ? { ...field, value } : field,
+                                  ),
+                                },
+                              };
+                              handleSnippetActionChange(index, serializeNodeToCode(nextNode));
+                            },
+                            actionNode.data.kind === 'code'
+                              ? `snippet-step-input-${id}-${index}`
+                              : `snippet-step-field-${id}-${index}`,
+                          )}
+                        </div>
+                        <div className="flow-node-card__inline-actions is-end-aligned">
+                          <div className="flow-node-card__step-toolbar-actions">
+                            <button
+                              aria-label={`Add block after ${index + 1}`}
+                              className="flow-node-card__step-toolbar-button nodrag nopan"
+                              type="button"
+                              onClick={() => handleSnippetActionAdd(index)}
+                            >
+                              + Block
+                            </button>
+                            <button
+                              aria-label={`Remove block ${index + 1}`}
+                              className="flow-node-card__step-toolbar-button is-danger nodrag nopan"
+                              type="button"
+                              onClick={() => handleSnippetActionRemove(index)}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })()
                 ))}
               </div>
               {snippetEditMode ? (
@@ -280,40 +367,45 @@ export function FlowNodeCard({
                 </div>
               ) : null}
             </>
-          ) : (
-            <div className="flow-node-card__fields">
-              {previewFields.length > 0 ? (
-                previewFields.map((field) => (
-                  <div className="flow-node-card__field" key={field.key}>
-                    <span>{field.label}</span>
-                    <strong>{field.value}</strong>
-                  </div>
-                ))
-              ) : (
-                <div className="flow-node-card__field is-empty">
-                  <span>Snippet actions</span>
-                  <strong>Expand this card to review code steps</strong>
-                </div>
-              )}
-            </div>
-          )}
+          ) : null}
         </div>
       ) : (
-        <div className="flow-node-card__fields">
-          {previewFields.length > 0 ? (
-            previewFields.map((field) => (
-              <div className="flow-node-card__field" key={field.key}>
-                <span>{field.label}</span>
-                <strong>{field.value}</strong>
+        <>
+          <div className="flow-node-card__fields">
+            {selected && data.fields.length > 0 ? (
+              renderFields(true)
+            ) : previewFields.length > 0 ? (
+              renderFields(false)
+            ) : (
+              <div className="flow-node-card__field is-empty">
+                <span>Custom code</span>
+                <strong>Open inspector to define inputs</strong>
               </div>
-            ))
-          ) : (
-            <div className="flow-node-card__field is-empty">
-              <span>Custom code</span>
-              <strong>Open inspector to define inputs</strong>
+            )}
+          </div>
+          {isSnippetStep ? (
+            <div className="flow-node-card__inline-actions is-end-aligned">
+              <div className="flow-node-card__step-toolbar-actions">
+                <button
+                  aria-label={`Add block after ${snippetStepIndex + 1}`}
+                  className="flow-node-card__step-toolbar-button nodrag nopan"
+                  type="button"
+                  onClick={() => onInsertSnippetStep?.(id, 'after')}
+                >
+                  + Block
+                </button>
+                <button
+                  aria-label={`Remove block ${snippetStepIndex + 1}`}
+                  className="flow-node-card__step-toolbar-button is-danger nodrag nopan"
+                  type="button"
+                  onClick={() => onRemoveSnippetStep?.(id)}
+                >
+                  Remove
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+          ) : null}
+        </>
       )}
 
       <Handle type="source" position={Position.Right} />

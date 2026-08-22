@@ -25,7 +25,6 @@ interface SideRailProps {
   onSelectTest: (testId: string) => void;
   onSnippetQueryChange: (value: string) => void;
   onCommitMessageChange: (value: string) => void;
-  onAddSnippet: (snippet: SnippetItem) => void;
   onEditSnippet: (snippetId: string) => void;
   onGitRefresh: () => void;
   onGitInit: () => void;
@@ -63,7 +62,6 @@ export function SideRail({
   onSelectTest,
   onSnippetQueryChange,
   onCommitMessageChange,
-  onAddSnippet,
   onEditSnippet,
   onGitRefresh,
   onGitInit,
@@ -112,12 +110,19 @@ export function SideRail({
     gitState.stagedFiles.length +
     gitState.unstagedFiles.length +
     gitState.untrackedFiles.length;
+  const sectionCounts = {
+    flows: tests.length,
+    snippets: snippets.length,
+    git: gitState.available ? gitChanges : 'new',
+  } as const;
 
   useEffect(() => {
     if (activeSnippetId) {
       setActiveSection('snippets');
+    } else if (activeTestId) {
+      setActiveSection('flows');
     }
-  }, [activeSnippetId]);
+  }, [activeSnippetId, activeTestId]);
 
   const headerCopy =
     activeSection === 'flows'
@@ -134,7 +139,7 @@ export function SideRail({
             title: 'Snippet library',
             description: activeSnippet
               ? `Editing ${activeSnippet.name}.`
-              : 'Reusable snippet files for any flow.',
+              : 'Reusable snippet files.',
           }
         : {
             kicker: projectName,
@@ -157,20 +162,13 @@ export function SideRail({
             <button
               className={`sidenav__point${activeSection === id ? ' is-active' : ''}`}
               key={id}
+              aria-pressed={activeSection === id}
               type="button"
               onClick={() => setActiveSection(id)}
             >
               <Icon size={18} strokeWidth={2.1} />
               <span>{label}</span>
-              <small>
-                {id === 'flows'
-                  ? tests.length
-                  : id === 'snippets'
-                    ? snippets.length
-                    : gitState.available
-                      ? gitChanges
-                      : 'new'}
-              </small>
+              <small>{sectionCounts[id]}</small>
             </button>
           ))}
         </div>
@@ -247,7 +245,7 @@ export function SideRail({
                 <small>
                   {activeSnippet?.filePath
                     ? fileNameFromPath(activeSnippet.filePath)
-                    : 'Select a snippet to edit its file in the inspector.'}
+                    : 'Choose a snippet file.'}
                 </small>
               </div>
 
@@ -277,6 +275,7 @@ export function SideRail({
                   >
                     <button
                       className="nav-row__main"
+                      aria-label={`Edit ${snippet.name} snippet`}
                       type="button"
                       onClick={() => {
                         setActiveSection('snippets');
@@ -293,28 +292,11 @@ export function SideRail({
                       </div>
                     </button>
 
-                    <div className="nav-row__actions">
-                      {dirtySnippets[snippet.id] ? (
+                    {dirtySnippets[snippet.id] ? (
+                      <div className="nav-row__actions">
                         <span className="nav-badge is-dirty">unsaved</span>
-                      ) : null}
-                      <button
-                        className="text-button"
-                        type="button"
-                        onClick={() => onAddSnippet(snippet)}
-                      >
-                        Insert
-                      </button>
-                      <button
-                        className="text-button"
-                        type="button"
-                        onClick={() => {
-                          setActiveSection('snippets');
-                          onEditSnippet(snippet.id);
-                        }}
-                      >
-                        Edit
-                      </button>
-                    </div>
+                      </div>
+                    ) : null}
                   </div>
                 ))
               ) : snippets.length > 0 ? (

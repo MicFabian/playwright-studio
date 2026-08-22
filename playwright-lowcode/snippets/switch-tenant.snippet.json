@@ -1,10 +1,10 @@
 {
   "id": "switch-tenant",
   "name": "Switch tenant",
-  "description": "Open the tenant picker and choose the current workspace.",
+  "description": "Open the tenant picker and choose the requested workspace.",
   "params": [
     "tenantName"
   ],
-  "code": "await page.getByRole('button', { name: 'Workspace' }).click();\nconst option = page.getByRole('option', { name: tenantName });\nawait option.waitFor({ state: 'visible' });\nawait option.click();",
+  "code": "await page.locator('[aria-haspopup=\"listbox\"]').click();\nawait page.locator(`[data-tenant=\"${tenantName}\"]`).click();",
   "updatedAt": "2026-03-19T14:15:00.000Z"
 }

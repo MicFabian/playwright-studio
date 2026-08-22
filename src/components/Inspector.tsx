@@ -52,6 +52,46 @@ export function Inspector({
     url: string;
     alt: string;
   } | null>(null);
+
+  function renderFieldInput(
+    nodeId: string,
+    field: FlowNode['data']['fields'][number],
+  ) {
+    if (field.control === 'select' && field.options) {
+      return (
+        <select
+          value={field.value}
+          onChange={(event) => onUpdateField(nodeId, field.key, event.target.value)}
+        >
+          {field.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (field.multiline) {
+      return (
+        <textarea
+          value={field.value}
+          placeholder={field.placeholder}
+          onChange={(event) => onUpdateField(nodeId, field.key, event.target.value)}
+        />
+      );
+    }
+
+    return (
+      <input
+        type="text"
+        value={field.value}
+        placeholder={field.placeholder}
+        onChange={(event) => onUpdateField(nodeId, field.key, event.target.value)}
+      />
+    );
+  }
+
   const snippetSaveLabel =
     snippetSaveState === 'saving'
       ? 'Saving…'
@@ -93,6 +133,14 @@ export function Inspector({
     runState?.stepResults.filter(
       (step) => step.status === 'queued' || step.status === 'running',
     ).length ?? 0;
+  const selectedNodeVisibleFields =
+    selectedNode?.data.fields.filter((field) => field.value).length ?? 0;
+  const selectedSnippetCodeLines = selectedSnippet
+    ? selectedSnippet.code
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean).length
+    : 0;
 
   useEffect(() => {
     if (!runStepsRef.current || !runState || runState.currentStepIndex == null) {
@@ -123,6 +171,19 @@ export function Inspector({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [screenshotPreview]);
 
+  useEffect(() => {
+    if (!screenshotPreview) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [screenshotPreview]);
+
   return (
     <aside className="inspector panel">
       <section className="panel-section inspector__editor">
@@ -138,112 +199,131 @@ export function Inspector({
         </div>
 
         {selectedNode ? (
-          <div className="form-stack">
-            <label className="field">
-              <span>Block title</span>
-              <input
-                type="text"
-                value={selectedNode.data.title}
-                onChange={(event) =>
-                  onUpdateTitle(selectedNode.id, event.target.value)
-                }
-              />
-            </label>
+          <>
+            <div className="run-summary">
+              <div>
+                <span>Kind</span>
+                <strong>{selectedNode.data.codeLabel}</strong>
+              </div>
+              <div>
+                <span>Visible fields</span>
+                <strong>{selectedNodeVisibleFields}</strong>
+              </div>
+              <div>
+                <span>Mode</span>
+                <strong>
+                  {selectedNode.data.kind === 'snippet' ? 'Snippet node' : 'Flow block'}
+                </strong>
+              </div>
+            </div>
 
-            {selectedNode.data.fields.map((field) => (
-              <label className="field" key={field.key}>
-                <span>{field.label}</span>
-                {field.multiline ? (
-                  <textarea
-                    value={field.value}
-                    placeholder={field.placeholder}
-                    onChange={(event) =>
-                      onUpdateField(selectedNode.id, field.key, event.target.value)
-                    }
-                  />
-                ) : (
-                  <input
-                    type="text"
-                    value={field.value}
-                    placeholder={field.placeholder}
-                    onChange={(event) =>
-                      onUpdateField(selectedNode.id, field.key, event.target.value)
-                    }
-                  />
-                )}
+            <div className="form-stack">
+              <label className="field">
+                <span>Block title</span>
+                <input
+                  type="text"
+                  value={selectedNode.data.title}
+                  onChange={(event) =>
+                    onUpdateTitle(selectedNode.id, event.target.value)
+                  }
+                />
               </label>
-            ))}
 
-            {selectedNode.data.kind === 'snippet' ? (
+              {selectedNode.data.fields.map((field) => (
+                <label className="field" key={field.key}>
+                  <span>{field.label}</span>
+                  {renderFieldInput(selectedNode.id, field)}
+                </label>
+              ))}
+
+              {selectedNode.data.kind === 'snippet' ? (
+                <label className="field">
+                  <span>Snippet code</span>
+                  <textarea
+                    className="code-area"
+                    value={selectedNode.data.snippetCode || ''}
+                    onChange={(event) =>
+                      onUpdateSnippetCode(selectedNode.id, event.target.value)
+                    }
+                  />
+                </label>
+              ) : null}
+            </div>
+          </>
+        ) : selectedSnippet ? (
+          <>
+            <div className="run-summary">
+              <div>
+                <span>Params</span>
+                <strong>{selectedSnippet.params.length}</strong>
+              </div>
+              <div>
+                <span>Code lines</span>
+                <strong>{selectedSnippetCodeLines}</strong>
+              </div>
+              <div>
+                <span>File</span>
+                <strong>{selectedSnippet.filePath || 'Unsaved'}</strong>
+              </div>
+            </div>
+
+            <div className="form-stack">
+              <label className="field">
+                <span>Snippet name</span>
+                <input
+                  type="text"
+                  value={selectedSnippet.name}
+                  onChange={(event) =>
+                    onUpdateSnippetName(selectedSnippet.id, event.target.value)
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>Description</span>
+                <textarea
+                  value={selectedSnippet.description}
+                  onChange={(event) =>
+                    onUpdateSnippetDescription(selectedSnippet.id, event.target.value)
+                  }
+                />
+              </label>
+
+              <label className="field">
+                <span>Params</span>
+                <input
+                  type="text"
+                  value={selectedSnippet.params.join(', ')}
+                  placeholder="headline, tenantName"
+                  onChange={(event) =>
+                    onUpdateSnippetParams(selectedSnippet.id, event.target.value)
+                  }
+                />
+              </label>
+
               <label className="field">
                 <span>Snippet code</span>
                 <textarea
                   className="code-area"
-                  value={selectedNode.data.snippetCode || ''}
+                  value={selectedSnippet.code}
                   onChange={(event) =>
-                    onUpdateSnippetCode(selectedNode.id, event.target.value)
+                    onUpdateSnippetCode(selectedSnippet.id, event.target.value)
                   }
                 />
               </label>
-            ) : null}
-          </div>
-        ) : selectedSnippet ? (
-          <div className="form-stack">
-            <label className="field">
-              <span>Snippet name</span>
-              <input
-                type="text"
-                value={selectedSnippet.name}
-                onChange={(event) =>
-                  onUpdateSnippetName(selectedSnippet.id, event.target.value)
-                }
-              />
-            </label>
 
-            <label className="field">
-              <span>Description</span>
-              <textarea
-                value={selectedSnippet.description}
-                onChange={(event) =>
-                  onUpdateSnippetDescription(selectedSnippet.id, event.target.value)
-                }
-              />
-            </label>
-
-            <label className="field">
-              <span>Params</span>
-              <input
-                type="text"
-                value={selectedSnippet.params.join(', ')}
-                placeholder="headline, tenantName"
-                onChange={(event) =>
-                  onUpdateSnippetParams(selectedSnippet.id, event.target.value)
-                }
-              />
-            </label>
-
-            <label className="field">
-              <span>Snippet code</span>
-              <textarea
-                className="code-area"
-                value={selectedSnippet.code}
-                onChange={(event) =>
-                  onUpdateSnippetCode(selectedSnippet.id, event.target.value)
-                }
-              />
-            </label>
-
-            <div className="button-row">
-              <button
-                className="primary-button"
-                disabled={!snippetDirty && snippetSaveState !== 'error'}
-                type="button"
-                onClick={onSaveSnippet}
-              >
-                {snippetSaveLabel}
-              </button>
+              <div className="button-row">
+                <button
+                  className="primary-button"
+                  disabled={!snippetDirty && snippetSaveState !== 'error'}
+                  type="button"
+                  onClick={onSaveSnippet}
+                >
+                  {snippetSaveLabel}
+                </button>
+              </div>
             </div>
-          </div>
+          </>
         ) : (
           <div className="empty-state">
             <p>Select a block or snippet to edit it.</p>
@@ -318,7 +398,9 @@ export function Inspector({
                   {step.error ? <p className="feedback error">{step.error}</p> : null}
                   {step.screenshotUrl ? (
                     <button
+                      aria-haspopup="dialog"
                       aria-label={`Expand screenshot for step ${step.index + 1}`}
+                      title="Open larger screenshot"
                       className="run-step__screenshot-trigger"
                       type="button"
                       onClick={() =>

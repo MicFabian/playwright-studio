@@ -44,7 +44,7 @@
         "codeLabel": "custom snippet",
         "status": "ready",
         "fields": [],
-        "snippetCode": "await page.setContent(`\n<main>\n  <button aria-haspopup='listbox'>Workspace</button>\n  <ul role='listbox' hidden>\n    <li role='option'>Acme Europe</li>\n    <li role='option'>Acme US</li>\n  </ul>\n  <p data-testid='current-tenant'>None</p>\n</main>\n<script>\n  const trigger = document.querySelector('button[aria-haspopup=\"listbox\"]');\n  const list = document.querySelector('[role=\"listbox\"]');\n  const currentTenant = document.querySelector('[data-testid=\"current-tenant\"]');\n  trigger.addEventListener('click', () => {\n    list.hidden = !list.hidden;\n  });\n  list.querySelectorAll('[role=\"option\"]').forEach((option) => {\n    option.addEventListener('click', () => {\n      currentTenant.textContent = option.textContent || '';\n      list.hidden = true;\n    });\n  });\n</script>\n`);"
+        "snippetCode": "await page.setContent(`\n<main>\n  <button aria-haspopup='listbox'>Workspace</button>\n  <ul role='listbox' hidden>\n    <li role='option' data-tenant='Acme Europe'>Acme Europe</li>\n    <li role='option' data-tenant='Acme US'>Acme US</li>\n  </ul>\n  <p data-testid='current-tenant'>None</p>\n</main>\n<script>\n  const trigger = document.querySelector('button[aria-haspopup=\"listbox\"]');\n  const list = document.querySelector('[role=\"listbox\"]');\n  const currentTenant = document.querySelector('[data-testid=\"current-tenant\"]');\n  trigger.addEventListener('click', () => {\n    list.hidden = !list.hidden;\n  });\n  list.querySelectorAll('[role=\"option\"]').forEach((option) => {\n    option.addEventListener('click', () => {\n      currentTenant.textContent = option.textContent || '';\n      list.hidden = true;\n    });\n  });\n</script>\n`);"
       }
     },
     {
@@ -58,7 +58,7 @@
         "kind": "snippet",
         "category": "snippet",
         "title": "Switch tenant",
-        "description": "Open the tenant picker and choose the current workspace.",
+        "description": "Open the tenant picker and choose the requested workspace.",
         "accent": "#f3d27a",
         "codeLabel": "custom snippet",
         "status": "ready",
@@ -70,7 +70,7 @@
             "value": "Acme Europe"
           }
         ],
-        "snippetCode": "await page.getByRole('button', { name: 'Workspace' }).click();\nconst option = page.getByRole('option', { name: tenantName });\nawait option.waitFor({ state: 'visible' });\nawait option.click();"
+        "snippetCode": "await page.locator('[aria-haspopup=\"listbox\"]').click();\nawait page.locator(`[data-tenant=\"${tenantName}\"]`).click();"
       }
     },
     {

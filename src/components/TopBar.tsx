@@ -29,6 +29,9 @@ export function TopBar({
   onSave,
   onFocusFlow,
 }: TopBarProps) {
+  const currentTitle = hasActiveTest
+    ? testPath?.split(/[\\/]/).pop() || 'Untitled flow'
+    : 'No flow selected';
   const saveLabel =
     saveState === 'saving'
       ? 'Saving…'
@@ -52,11 +55,10 @@ export function TopBar({
     <header className="topbar">
       <div className="topbar__brand">
         <span className="topbar__kicker">{projectName}</span>
-        <div className="topbar__heading-row">
-          <div className="topbar__pills">
-            <span className={`topbar__pill${isDirty ? ' is-warn' : ''}`}>{statusLabel}</span>
-            <span className="topbar__pill">{gitLabel}</span>
-          </div>
+        <h1>{currentTitle}</h1>
+        <div className="topbar__pills">
+          <span className={`topbar__pill${isDirty ? ' is-warn' : ''}`}>{statusLabel}</span>
+          <span className="topbar__pill">{gitLabel}</span>
         </div>
         <p className="topbar__subline">
           <span>{testPath || 'No flow selected'}</span>

@@ -169,7 +169,7 @@
         "kind": "snippet",
         "category": "snippet",
         "title": "Wait for dashboard",
-        "description": "Reusable idle-state and dashboard-header validation.",
+        "description": "Confirm the dashboard headline matches the expected value.",
         "accent": "#f3d27a",
         "codeLabel": "custom snippet",
         "status": "ready",
@@ -181,7 +181,7 @@
             "value": "Dashboard"
           }
         ],
-        "snippetCode": "await page.waitForLoadState('domcontentloaded');\nconst dashboardText = (await page.locator('[data-testid=\"dashboard-title\"]').textContent()) || '';\nif (!dashboardText.includes(headline)) {\n  throw new Error(`Dashboard headline mismatch: ${dashboardText}`);\n}"
+        "snippetCode": "await expect(page.locator('[data-testid=\"dashboard-title\"]')).toContainText(headline);"
       }
     }
   ],

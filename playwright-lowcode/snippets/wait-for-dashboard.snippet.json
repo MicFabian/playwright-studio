@@ -1,10 +1,10 @@
 {
   "id": "wait-for-dashboard",
   "name": "Wait for dashboard",
-  "description": "Reusable idle-state and dashboard-header validation.",
+  "description": "Confirm the dashboard headline matches the expected value.",
   "params": [
     "headline"
   ],
-  "code": "await page.waitForLoadState('domcontentloaded');\nconst dashboardText = (await page.locator('[data-testid=\"dashboard-title\"]').textContent()) || '';\nif (!dashboardText.includes(headline)) {\n  throw new Error(`Dashboard headline mismatch: ${dashboardText}`);\n}",
+  "code": "await expect(page.locator('[data-testid=\"dashboard-title\"]')).toContainText(headline);",
   "updatedAt": "2026-03-19T14:15:00.000Z"
 }

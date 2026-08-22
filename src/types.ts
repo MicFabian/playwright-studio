@@ -8,6 +8,8 @@ export type FlowBlockKind =
   | 'extract'
   | 'condition'
   | 'loop'
+  | 'code'
+  | 'freetext'
   | 'snippet';
 
 export type FlowBlockCategory =
@@ -15,7 +17,23 @@ export type FlowBlockCategory =
   | 'action'
   | 'assertion'
   | 'logic'
+  | 'annotation'
   | 'snippet';
+
+export interface BlockFieldOption {
+  label: string;
+  value: string;
+}
+
+export type SelectorStrategy =
+  | 'data-testid'
+  | 'name'
+  | 'id'
+  | 'placeholder'
+  | 'text'
+  | 'css';
+
+export type SelectorFieldPrefix = 'locator' | 'target' | 'guard';
 
 export interface BlockField {
   key: string;
@@ -23,6 +41,20 @@ export interface BlockField {
   value: string;
   placeholder?: string;
   multiline?: boolean;
+  control?: 'text' | 'select';
+  options?: BlockFieldOption[];
+}
+
+export interface FlowBlockTemplate {
+  kind: FlowBlockKind;
+  category: FlowBlockCategory;
+  title: string;
+  description: string;
+  accent: string;
+  codeLabel: string;
+  status: 'ready' | 'draft';
+  fields: BlockField[];
+  snippetCode?: string;
 }
 
 export interface FlowBlockData extends Record<string, unknown> {

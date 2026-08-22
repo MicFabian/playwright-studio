@@ -1,5 +1,9 @@
 import type { FlowEdge, FlowNode, GitState, StoredTestFlow, TestRun, WorkspaceData } from '../types';
 
+type JsonRequestInit = Omit<RequestInit, 'body'> & {
+  body?: unknown;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
 
@@ -20,75 +24,79 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+function jsonRequest<T>(
+  path: string,
+  init: JsonRequestInit = {},
+): Promise<T> {
+  const { body, headers, ...rest } = init;
+  const mergedHeaders = new Headers(headers);
+  const jsonBody = body === undefined ? undefined : JSON.stringify(body);
+
+  if (body !== undefined && !mergedHeaders.has('Content-Type')) {
+    mergedHeaders.set('Content-Type', 'application/json');
+  }
+
+  return request<T>(path, {
+    ...rest,
+    headers: mergedHeaders,
+    body: jsonBody as BodyInit | undefined,
+  });
+}
+
 export function loadWorkspace() {
   return request<WorkspaceData>('/api/workspace');
 }
 
 export function saveTest(test: StoredTestFlow) {
-  return request<{ test: StoredTestFlow; git: GitState }>(`/api/tests/${test.id}`, {
+  return jsonRequest<{ test: StoredTestFlow; git: GitState }>(`/api/tests/${test.id}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(test),
+    body: test,
   });
 }
 
 export function createTest(name?: string) {
-  return request<{ test: StoredTestFlow; git: GitState }>('/api/tests', {
+  return jsonRequest<{ test: StoredTestFlow; git: GitState }>('/api/tests', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ name }),
+    body: { name },
   });
 }
 
 export function saveSnippet(snippet: WorkspaceData['snippets'][number]) {
-  return request<{
+  return jsonRequest<{
     snippet: WorkspaceData['snippets'][number];
     git: GitState;
   }>(`/api/snippets/${snippet.id}`, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(snippet),
+    body: snippet,
   });
 }
 
 export function createSnippet(name?: string) {
-  return request<{
+  return jsonRequest<{
     snippet: WorkspaceData['snippets'][number];
     git: GitState;
   }>('/api/snippets', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ name }),
+    body: { name },
   });
 }
 
 export function initGitRepo() {
-  return request<{ git: GitState }>('/api/git/init', {
+  return jsonRequest<{ git: GitState }>('/api/git/init', {
     method: 'POST',
   });
 }
 
 export function stageWorkspaceFiles() {
-  return request<{ git: GitState }>('/api/git/stage', {
+  return jsonRequest<{ git: GitState }>('/api/git/stage', {
     method: 'POST',
   });
 }
 
 export function commitWorkspace(message: string) {
-  return request<{ git: GitState }>('/api/git/commit', {
+  return jsonRequest<{ git: GitState }>('/api/git/commit', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ message }),
+    body: { message },
   });
 }
 
@@ -100,12 +108,9 @@ export function startTestRun(input: {
   liveMode?: boolean;
   slowMoMs?: number;
 }) {
-  return request<{ run: TestRun }>('/api/runs', {
+  return jsonRequest<{ run: TestRun }>('/api/runs', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(input),
+    body: input,
   });
 }
 

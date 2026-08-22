@@ -31,6 +31,8 @@ const blockKinds = new Set([
   'extract',
   'condition',
   'loop',
+  'code',
+  'freetext',
   'snippet',
 ]);
 
@@ -51,6 +53,20 @@ const runsById = new Map();
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function createHttpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function getHttpStatus(error) {
+  if (error && typeof error === 'object' && Number.isInteger(error.statusCode)) {
+    return error.statusCode;
+  }
+
+  return 500;
 }
 
 function normalizeRunId(value) {
@@ -103,12 +119,241 @@ function sanitizeField(field, index) {
     value: String(field?.value ?? ''),
     ...(field?.placeholder ? { placeholder: String(field.placeholder) } : {}),
     ...(field?.multiline ? { multiline: true } : {}),
+    ...(field?.control === 'select' ? { control: 'select' } : {}),
+    ...(Array.isArray(field?.options)
+      ? {
+          options: field.options.map((option) => ({
+            label: String(option?.label || option?.value || ''),
+            value: String(option?.value || option?.label || ''),
+          })),
+        }
+      : {}),
   };
+}
+
+const selectorStrategyOptions = [
+  { value: 'data-testid', label: 'data-testid' },
+  { value: 'name', label: 'name' },
+  { value: 'id', label: 'id' },
+  { value: 'placeholder', label: 'placeholder' },
+  { value: 'text', label: 'text' },
+  { value: 'css', label: 'Custom selector' },
+];
+
+function createSelectField(key, label, value, options) {
+  return {
+    key,
+    label,
+    value,
+    control: 'select',
+    options,
+  };
+}
+
+function selectorValuePlaceholder(strategy, fallback) {
+  switch (strategy) {
+    case 'data-testid':
+      return 'submit-button';
+    case 'name':
+      return 'email';
+    case 'id':
+      return 'submit-login';
+    case 'placeholder':
+      return 'Email address';
+    case 'text':
+      return 'Continue';
+    case 'css':
+    default:
+      return fallback || '[data-testid="submit"]';
+  }
+}
+
+function createSelectorFields(prefix, strategy, value, fallback) {
+  return [
+    createSelectField(`${prefix}Kind`, 'Find by', strategy, selectorStrategyOptions),
+    {
+      key: `${prefix}Value`,
+      label: strategy === 'css' ? 'Selector' : 'Value',
+      value,
+      placeholder: selectorValuePlaceholder(strategy, fallback),
+    },
+  ];
+}
+
+function getFieldValue(fields, key) {
+  return fields.find((field) => field.key === key)?.value || '';
+}
+
+function parseSelector(selector) {
+  const raw = String(selector || '').trim();
+
+  if (!raw) {
+    return { kind: 'css', value: '' };
+  }
+
+  const attributeMatch = raw.match(/^\[(data-testid|name|id|placeholder)="([^"]*)"\]$/);
+
+  if (attributeMatch) {
+    return {
+      kind: attributeMatch[1],
+      value: attributeMatch[2],
+    };
+  }
+
+  const idMatch = raw.match(/^#([a-zA-Z0-9_-]+)$/);
+
+  if (idMatch) {
+    return {
+      kind: 'id',
+      value: idMatch[1],
+    };
+  }
+
+  if (raw.startsWith('text=')) {
+    return {
+      kind: 'text',
+      value: raw.slice(5),
+    };
+  }
+
+  return {
+    kind: 'css',
+    value: raw,
+  };
+}
+
+function escapeSelectorValue(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function buildSelector(kind, value, fallback) {
+  const normalizedValue = String(value || '').trim();
+
+  if (!normalizedValue) {
+    return fallback;
+  }
+
+  switch (kind) {
+    case 'data-testid':
+      return `[data-testid="${escapeSelectorValue(normalizedValue)}"]`;
+    case 'name':
+      return `[name="${escapeSelectorValue(normalizedValue)}"]`;
+    case 'id':
+      return `[id="${escapeSelectorValue(normalizedValue)}"]`;
+    case 'placeholder':
+      return `[placeholder="${escapeSelectorValue(normalizedValue)}"]`;
+    case 'text':
+      return `text=${normalizedValue}`;
+    case 'css':
+    default:
+      return normalizedValue;
+  }
+}
+
+function resolveSelector(fields, prefix, fallback) {
+  const parsed = parseSelector(getFieldValue(fields, prefix) || fallback);
+  const strategy = getFieldValue(fields, `${prefix}Kind`) || parsed.kind;
+  const value = getFieldValue(fields, `${prefix}Value`) || parsed.value;
+
+  return buildSelector(strategy, value, fallback);
+}
+
+function normalizeStructuredFields(kind, fields) {
+  switch (kind) {
+    case 'click': {
+      const parsed = parseSelector(getFieldValue(fields, 'locator') || '[data-testid="submit"]');
+      const strategy = getFieldValue(fields, 'locatorKind') || parsed.kind;
+      const value = getFieldValue(fields, 'locatorValue') || parsed.value;
+      return createSelectorFields('locator', strategy, value, '[data-testid="submit"]');
+    }
+    case 'fill': {
+      const parsed = parseSelector(getFieldValue(fields, 'locator') || '[name="email"]');
+      const strategy = getFieldValue(fields, 'locatorKind') || parsed.kind;
+      const value = getFieldValue(fields, 'locatorValue') || parsed.value;
+      return [
+        ...createSelectorFields('locator', strategy, value, '[name="email"]'),
+        {
+          key: 'value',
+          label: 'Text to fill',
+          value: getFieldValue(fields, 'value') || 'qa@example.com',
+          placeholder: 'Value or variable',
+        },
+      ];
+    }
+    case 'assert': {
+      const parsed = parseSelector(
+        getFieldValue(fields, 'target') || '[data-testid="dashboard-title"]',
+      );
+      const strategy = getFieldValue(fields, 'targetKind') || parsed.kind;
+      const value = getFieldValue(fields, 'targetValue') || parsed.value;
+      return [
+        ...createSelectorFields(
+          'target',
+          strategy,
+          value,
+          '[data-testid="dashboard-title"]',
+        ),
+        {
+          key: 'expectation',
+          label: 'Expected text',
+          value: getFieldValue(fields, 'expectation') || 'Dashboard',
+          placeholder: 'Expected text or condition',
+        },
+      ];
+    }
+    case 'extract': {
+      const parsed = parseSelector(
+        getFieldValue(fields, 'locator') || '[data-testid="order-count"]',
+      );
+      const strategy = getFieldValue(fields, 'locatorKind') || parsed.kind;
+      const value = getFieldValue(fields, 'locatorValue') || parsed.value;
+      return [
+        ...createSelectorFields(
+          'locator',
+          strategy,
+          value,
+          '[data-testid="order-count"]',
+        ),
+        {
+          key: 'variable',
+          label: 'Variable',
+          value: getFieldValue(fields, 'variable') || 'orderCount',
+          placeholder: 'camelCase variable',
+        },
+      ];
+    }
+    case 'condition': {
+      const parsed = parseSelector(
+        getFieldValue(fields, 'guard') || '[data-testid="toast-error"]',
+      );
+      const strategy = getFieldValue(fields, 'guardKind') || parsed.kind;
+      const value = getFieldValue(fields, 'guardValue') || parsed.value;
+      return createSelectorFields('guard', strategy, value, '[data-testid="toast-error"]');
+    }
+    case 'freetext':
+      return [
+        {
+          key: 'code',
+          label: 'Code',
+          value:
+            getFieldValue(fields, 'code') ||
+            getFieldValue(fields, 'content') ||
+            "await page.waitForLoadState('networkidle');",
+          placeholder: "await page.locator('[data-testid=\"target\"]').click();",
+          multiline: true,
+        },
+      ];
+    default:
+      return fields;
+  }
 }
 
 function sanitizeNodeData(data) {
   const kind = blockKinds.has(data?.kind) ? data.kind : 'snippet';
   const status = data?.status === 'ready' ? 'ready' : 'draft';
+  const sanitizedFields = Array.isArray(data?.fields)
+    ? data.fields.map((field, index) => sanitizeField(field, index))
+    : [];
 
   return {
     kind,
@@ -118,9 +363,7 @@ function sanitizeNodeData(data) {
     accent: String(data?.accent || '#19c2b0'),
     codeLabel: String(data?.codeLabel || 'custom block'),
     status,
-    fields: Array.isArray(data?.fields)
-      ? data.fields.map((field, index) => sanitizeField(field, index))
-      : [],
+    fields: normalizeStructuredFields(kind, sanitizedFields),
     ...(typeof data?.snippetCode === 'string'
       ? { snippetCode: data.snippetCode }
       : {}),
@@ -217,40 +460,39 @@ function renderNode(node) {
   const fields = Object.fromEntries(
     (node.data.fields || []).map((field) => [field.key, field.value]),
   );
+  const renderRawCode = (content, fallback) => {
+    const normalized = String(content || '').trimEnd();
+    return normalized ? normalized.split('\n').map((line) => line.trimEnd()) : [fallback];
+  };
+  const locator = resolveSelector(fields, 'locator', '[data-testid="submit"]');
+  const target = resolveSelector(fields, 'target', '[data-testid="target"]');
+  const guard = resolveSelector(fields, 'guard', '[data-testid="guard"]');
 
   switch (node.data.kind) {
     case 'navigate':
       return [`await page.goto(${q(fields.url || 'https://example.com')});`];
     case 'click':
-      return [
-        `await page.locator(${q(fields.locator || '[data-testid="submit"]')}).click();`,
-      ];
+      return [`await page.locator(${q(locator)}).click();`];
     case 'fill':
-      return [
-        `await page.locator(${q(fields.locator || '[name="field"]')}).fill(${q(
-          fields.value || '',
-        )});`,
-      ];
+      return [`await page.locator(${q(locator)}).fill(${q(fields.value || '')});`];
     case 'assert':
-      return [
-        `await expect(page.locator(${q(
-          fields.target || '[data-testid="target"]',
-        )})).toContainText(${q(fields.expectation || 'Expected text')});`,
-      ];
+      return [`await expect(page.locator(${q(target)})).toContainText(${q(fields.expectation || 'Expected text')});`];
     case 'extract':
       return [
-        `const ${safeIdentifier(
-          fields.variable || 'value',
-        )} = await page.locator(${q(
-          fields.locator || '[data-testid="value"]',
+        `const ${safeIdentifier(fields.variable || 'value')} = await page.locator(${q(
+          locator,
         )}).textContent();`,
       ];
+    case 'code':
+      return renderRawCode(fields.code, '// Custom code');
     case 'condition':
       return [
-        `if (await page.locator(${q(fields.guard || '[data-testid="guard"]')}).isVisible()) {`,
+        `if (await page.locator(${q(guard)}).isVisible()) {`,
         '  // Attach branch blocks to this condition in the flow editor.',
         '}',
       ];
+    case 'freetext':
+      return renderRawCode(fields.code, '// Custom code');
     case 'loop':
       return [
         `for (const ${safeIdentifier(fields.alias || 'item')} of ${
@@ -302,8 +544,49 @@ function resolveTemplate(value, variables) {
   });
 }
 
+async function executeCustomCode(source, page, variables) {
+  const code = String(source || '').trim();
+
+  if (!code) {
+    return;
+  }
+
+  let expect;
+
+  try {
+    ({ expect } = await import('@playwright/test'));
+  } catch {
+    expect = undefined;
+  }
+
+  const variablePrelude = Object.keys(variables)
+    .map((key) => `const ${safeIdentifier(key)} = vars[${q(key)}];`)
+    .join('\n');
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const runCode = new AsyncFunction(
+    'page',
+    'vars',
+    'expect',
+    variablePrelude ? `${variablePrelude}\n${code}` : code,
+  );
+
+  await runCode(page, variables, expect);
+}
+
 async function executeNodeStep(node, page, variables) {
   const fields = mapNodeFields(node);
+  const locator = resolveTemplate(
+    resolveSelector(fields, 'locator', '[data-testid="submit"]'),
+    variables,
+  );
+  const target = resolveTemplate(
+    resolveSelector(fields, 'target', '[data-testid="target"]'),
+    variables,
+  );
+  const guard = resolveTemplate(
+    resolveSelector(fields, 'guard', '[data-testid="guard"]'),
+    variables,
+  );
 
   switch (node.data.kind) {
     case 'navigate': {
@@ -312,24 +595,15 @@ async function executeNodeStep(node, page, variables) {
       return;
     }
     case 'click': {
-      const locator = resolveTemplate(
-        fields.locator || '[data-testid="submit"]',
-        variables,
-      );
       await page.locator(locator).click();
       return;
     }
     case 'fill': {
-      const locator = resolveTemplate(fields.locator || '[name="field"]', variables);
       const value = resolveTemplate(fields.value || '', variables);
       await page.locator(locator).fill(value);
       return;
     }
     case 'assert': {
-      const locator = resolveTemplate(
-        fields.target || '[data-testid="target"]',
-        variables,
-      );
       const expectedText = resolveTemplate(
         fields.expectation || 'Expected text',
         variables,
@@ -345,22 +619,20 @@ async function executeNodeStep(node, page, variables) {
       return;
     }
     case 'extract': {
-      const locator = resolveTemplate(
-        fields.locator || '[data-testid="value"]',
-        variables,
-      );
       const variable = safeIdentifier(fields.variable || 'value');
       variables[variable] = (await page.locator(locator).textContent()) || '';
       return;
     }
+    case 'code':
+      await executeCustomCode(fields.code, page, variables);
+      return;
     case 'condition': {
-      const guard = resolveTemplate(
-        fields.guard || '[data-testid="guard"]',
-        variables,
-      );
       variables.lastCondition = await page.locator(guard).isVisible();
       return;
     }
+    case 'freetext':
+      await executeCustomCode(fields.code, page, variables);
+      return;
     case 'loop': {
       const alias = safeIdentifier(fields.alias || 'item');
       const collectionKey = String(fields.collection || 'items');
@@ -377,6 +649,14 @@ async function executeNodeStep(node, page, variables) {
 
       if (!snippetCode) {
         return;
+      }
+
+      let expect;
+
+      try {
+        ({ expect } = await import('@playwright/test'));
+      } catch {
+        expect = undefined;
       }
 
       const snippetParams = Object.fromEntries(
@@ -396,10 +676,11 @@ async function executeNodeStep(node, page, variables) {
         'page',
         'vars',
         'params',
+        'expect',
         snippetParamPrelude ? `${snippetParamPrelude}\n${snippetCode}` : snippetCode,
       );
 
-      await runSnippet(page, variables, snippetParams);
+      await runSnippet(page, variables, snippetParams, expect);
       return;
     }
     default:
@@ -934,16 +1215,28 @@ async function initGitRepo() {
 }
 
 async function stageGitWorkspace(project) {
+  const workspaceRoot = path.dirname(project.paths.testsDir);
+  const projectFile = path.join(workspaceRoot, 'project.json');
+
   await runGit([
     'add',
+    '-A',
     '--',
-    path.dirname(project.paths.testsDir),
+    projectFile,
+    project.paths.testsDir,
+    project.paths.snippetsDir,
     project.paths.generatedTestsDir,
   ]);
 }
 
 async function commitGitWorkspace(message) {
-  await runGit(['commit', '-m', message]);
+  const trimmedMessage = String(message || '').trim();
+
+  if (!trimmedMessage) {
+    throw createHttpError(400, 'Commit message is required.');
+  }
+
+  await runGit(['commit', '-m', trimmedMessage]);
 }
 
 async function parseBody(request) {
@@ -957,7 +1250,17 @@ async function parseBody(request) {
     return {};
   }
 
-  return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  const raw = Buffer.concat(chunks).toString('utf8').trim();
+
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw createHttpError(400, 'Request body must be valid JSON.');
+  }
 }
 
 function sendJson(response, statusCode, payload) {
@@ -1003,147 +1306,133 @@ async function handleApi(request, response) {
   const project = await readProject();
   await ensureWorkspaceLayout(project);
 
-  if (request.method === 'GET' && url.pathname === '/api/workspace') {
-    sendJson(response, 200, await getWorkspace());
-    return;
-  }
-
-  if (request.method === 'POST' && url.pathname === '/api/runs') {
-    const body = await parseBody(request);
-
-    try {
-      const run = await startTestRun(project, body);
-      sendJson(response, 201, { run });
-    } catch (error) {
-      sendError(response, 400, getErrorMessage(error));
-    }
-    return;
-  }
-
-  const runMatch = url.pathname.match(/^\/api\/runs\/([^/]+)$/);
-  const runScreenshotMatch = url.pathname.match(
-    /^\/api\/runs\/([^/]+)\/screenshots\/([^/]+)$/,
-  );
-
-  if (request.method === 'GET' && runMatch) {
-    const runId = normalizeRunId(runMatch[1]);
-    const run = runsById.get(runId);
-
-    if (!run) {
-      sendError(response, 404, `Run "${runId}" was not found.`);
+  try {
+    if (request.method === 'GET' && url.pathname === '/api/workspace') {
+      sendJson(response, 200, await getWorkspace());
       return;
     }
 
-    sendJson(response, 200, { run: serializeRun(run) });
-    return;
-  }
-
-  if (request.method === 'GET' && runScreenshotMatch) {
-    const runId = normalizeRunId(runScreenshotMatch[1]);
-    const fileName = path.basename(decodeURIComponent(runScreenshotMatch[2]));
-    const screenshotPath = path.join(rootDir, runsRootRelative, runId, fileName);
-
-    try {
-      const screenshot = await fs.readFile(screenshotPath);
-      response.statusCode = 200;
-      response.setHeader(
-        'Content-Type',
-        contentTypes[path.extname(screenshotPath)] || 'application/octet-stream',
-      );
-      response.setHeader('Cache-Control', 'no-store');
-      response.end(screenshot);
-    } catch {
-      sendError(response, 404, 'Screenshot not found');
+    if (request.method === 'POST' && url.pathname === '/api/runs') {
+      const body = await parseBody(request);
+      const run = await startTestRun(project, body);
+      sendJson(response, 201, { run });
+      return;
     }
-    return;
-  }
 
-  if (request.method === 'POST' && url.pathname === '/api/tests') {
-    const body = await parseBody(request);
-    const test = await createTest(project, body.name);
-    sendJson(response, 201, {
-      test,
-      git: await getGitStatus(),
-    });
-    return;
-  }
+    const runMatch = url.pathname.match(/^\/api\/runs\/([^/]+)$/);
+    const runScreenshotMatch = url.pathname.match(
+      /^\/api\/runs\/([^/]+)\/screenshots\/([^/]+)$/,
+    );
 
-  if (request.method === 'POST' && url.pathname === '/api/snippets') {
-    const body = await parseBody(request);
-    const snippet = await createSnippet(project, body.name);
-    sendJson(response, 201, {
-      snippet,
-      git: await getGitStatus(),
-    });
-    return;
-  }
+    if (request.method === 'GET' && runMatch) {
+      const runId = normalizeRunId(runMatch[1]);
+      const run = runsById.get(runId);
 
-  if (request.method === 'POST' && url.pathname === '/api/git/init') {
-    try {
+      if (!run) {
+        throw createHttpError(404, `Run "${runId}" was not found.`);
+      }
+
+      sendJson(response, 200, { run: serializeRun(run) });
+      return;
+    }
+
+    if (request.method === 'GET' && runScreenshotMatch) {
+      const runId = normalizeRunId(runScreenshotMatch[1]);
+      const fileName = path.basename(decodeURIComponent(runScreenshotMatch[2]));
+      const screenshotPath = path.join(rootDir, runsRootRelative, runId, fileName);
+
+      try {
+        const screenshot = await fs.readFile(screenshotPath);
+        response.statusCode = 200;
+        response.setHeader(
+          'Content-Type',
+          contentTypes[path.extname(screenshotPath)] || 'application/octet-stream',
+        );
+        response.setHeader('Cache-Control', 'no-store');
+        response.end(screenshot);
+      } catch {
+        throw createHttpError(404, 'Screenshot not found');
+      }
+
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/tests') {
+      const body = await parseBody(request);
+      const test = await createTest(project, body.name);
+      sendJson(response, 201, {
+        test,
+        git: await getGitStatus(),
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/snippets') {
+      const body = await parseBody(request);
+      const snippet = await createSnippet(project, body.name);
+      sendJson(response, 201, {
+        snippet,
+        git: await getGitStatus(),
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/git/init') {
       await initGitRepo();
       sendJson(response, 200, {
         git: await getGitStatus(),
       });
-    } catch (error) {
-      sendError(response, 400, getErrorMessage(error));
+      return;
     }
-    return;
-  }
 
-  if (request.method === 'POST' && url.pathname === '/api/git/stage') {
-    try {
+    if (request.method === 'POST' && url.pathname === '/api/git/stage') {
       await stageGitWorkspace(project);
       sendJson(response, 200, {
         git: await getGitStatus(),
       });
-    } catch (error) {
-      sendError(response, 400, getErrorMessage(error));
+      return;
     }
-    return;
-  }
 
-  if (request.method === 'POST' && url.pathname === '/api/git/commit') {
-    const body = await parseBody(request);
-
-    try {
-      await commitGitWorkspace(String(body.message || '').trim());
+    if (request.method === 'POST' && url.pathname === '/api/git/commit') {
+      const body = await parseBody(request);
+      await commitGitWorkspace(body.message);
       sendJson(response, 200, {
         git: await getGitStatus(),
       });
-    } catch (error) {
-      sendError(response, 400, getErrorMessage(error));
+      return;
     }
-    return;
+
+    const testMatch = url.pathname.match(/^\/api\/tests\/([^/]+)$/);
+    const snippetMatch = url.pathname.match(/^\/api\/snippets\/([^/]+)$/);
+
+    if (request.method === 'PUT' && testMatch) {
+      const body = await parseBody(request);
+      const requestedId = slugify(testMatch[1]);
+      const test = await persistTest(project, body, requestedId);
+
+      sendJson(response, 200, {
+        test,
+        git: await getGitStatus(),
+      });
+      return;
+    }
+
+    if (request.method === 'PUT' && snippetMatch) {
+      const body = await parseBody(request);
+      const requestedId = slugify(snippetMatch[1]);
+      const snippet = await persistSnippet(project, body, requestedId);
+
+      sendJson(response, 200, {
+        snippet,
+        git: await getGitStatus(),
+      });
+      return;
+    }
+
+    throw createHttpError(404, 'Not found');
+  } catch (error) {
+    sendError(response, getHttpStatus(error), getErrorMessage(error));
   }
-
-  const testMatch = url.pathname.match(/^\/api\/tests\/([^/]+)$/);
-  const snippetMatch = url.pathname.match(/^\/api\/snippets\/([^/]+)$/);
-
-  if (request.method === 'PUT' && testMatch) {
-    const body = await parseBody(request);
-    const requestedId = slugify(testMatch[1]);
-    const test = await persistTest(project, body, requestedId);
-
-    sendJson(response, 200, {
-      test,
-      git: await getGitStatus(),
-    });
-    return;
-  }
-
-  if (request.method === 'PUT' && snippetMatch) {
-    const body = await parseBody(request);
-    const requestedId = slugify(snippetMatch[1]);
-    const snippet = await persistSnippet(project, body, requestedId);
-
-    sendJson(response, 200, {
-      snippet,
-      git: await getGitStatus(),
-    });
-    return;
-  }
-
-  sendError(response, 404, 'Not found');
 }
 
 async function serveStatic(request, response) {
