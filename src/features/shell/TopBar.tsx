@@ -1,0 +1,66 @@
+import { Play, Save, Square, Zap } from 'lucide-react';
+
+interface TopBarProps {
+  flowName: string;
+  dirty: boolean;
+  saveState: 'idle' | 'saving' | 'saved' | 'error';
+  running: boolean;
+  onSave: () => void;
+  onRun: (liveMode: boolean) => void;
+  onRename: (name: string) => void;
+  onCancel: () => void;
+}
+
+const SAVE_LABELS = {
+  idle: 'Save',
+  saving: 'Saving…',
+  saved: 'Saved',
+  error: 'Save failed',
+} as const;
+
+export function TopBar({
+  flowName,
+  dirty,
+  saveState,
+  running,
+  onSave,
+  onRun,
+  onRename,
+  onCancel,
+}: TopBarProps) {
+  return (
+    <header className="topbar">
+      <div className="topbar__identity">
+        <span className="topbar__product">Playwright Studio</span>
+        <input
+          className="topbar__name"
+          value={flowName}
+          aria-label="Flow name"
+          onChange={(event) => onRename(event.target.value)}
+        />
+        {dirty ? <span className="topbar__badge">Unsaved</span> : null}
+      </div>
+
+      <div className="topbar__actions">
+        <button type="button" onClick={onSave} disabled={saveState === 'saving'}>
+          <Save size={14} aria-hidden /> {SAVE_LABELS[saveState]}
+        </button>
+
+        {running ? (
+          <button type="button" className="danger" onClick={onCancel}>
+            <Square size={14} aria-hidden /> Stop
+          </button>
+        ) : (
+          <>
+            <button type="button" onClick={() => onRun(false)}>
+              <Play size={14} aria-hidden /> Run
+            </button>
+            <button type="button" onClick={() => onRun(true)}>
+              <Zap size={14} aria-hidden /> Run headed
+            </button>
+          </>
+        )}
+      </div>
+    </header>
+  );
+}

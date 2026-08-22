@@ -1,4 +1,4 @@
-import type { GitState, StoredTestFlow, TestRun, WorkspaceData } from '../types';
+import type { FlowDocument, GitState, StoredTestFlow, TestRun, WorkspaceData } from '../types';
 
 type JsonRequestInit = Omit<RequestInit, 'body'> & {
   body?: unknown;
@@ -98,7 +98,9 @@ export function loadWorkspace() {
   return request<WorkspaceData>('/api/workspace');
 }
 
-export function saveTest(test: StoredTestFlow) {
+export function saveTest(test: Pick<StoredTestFlow, 'id' | 'name' | 'status'> & {
+  document: FlowDocument;
+}) {
   return jsonRequest<{ test: StoredTestFlow; git: GitState }>(`/api/tests/${test.id}`, {
     method: 'PUT',
     body: test,
@@ -113,35 +115,25 @@ export function createTest(name?: string) {
 }
 
 export function saveSnippet(snippet: WorkspaceData['snippets'][number]) {
-  return jsonRequest<{
-    snippet: WorkspaceData['snippets'][number];
-    git: GitState;
-  }>(`/api/snippets/${snippet.id}`, {
-    method: 'PUT',
-    body: snippet,
-  });
+  return jsonRequest<{ snippet: WorkspaceData['snippets'][number]; git: GitState }>(
+    `/api/snippets/${snippet.id}`,
+    { method: 'PUT', body: snippet },
+  );
 }
 
 export function createSnippet(name?: string) {
-  return jsonRequest<{
-    snippet: WorkspaceData['snippets'][number];
-    git: GitState;
-  }>('/api/snippets', {
-    method: 'POST',
-    body: { name },
-  });
+  return jsonRequest<{ snippet: WorkspaceData['snippets'][number]; git: GitState }>(
+    '/api/snippets',
+    { method: 'POST', body: { name } },
+  );
 }
 
 export function initGitRepo() {
-  return jsonRequest<{ git: GitState }>('/api/git/init', {
-    method: 'POST',
-  });
+  return jsonRequest<{ git: GitState }>('/api/git/init', { method: 'POST' });
 }
 
 export function stageWorkspaceFiles() {
-  return jsonRequest<{ git: GitState }>('/api/git/stage', {
-    method: 'POST',
-  });
+  return jsonRequest<{ git: GitState }>('/api/git/stage', { method: 'POST' });
 }
 
 export function commitWorkspace(message: string) {
@@ -151,18 +143,55 @@ export function commitWorkspace(message: string) {
   });
 }
 
-export function startTestRun(input: {
-  testId: string;
-  testName: string;
-  liveMode?: boolean;
-  slowMoMs?: number;
-}) {
-  return jsonRequest<{ run: TestRun }>('/api/runs', {
-    method: 'POST',
-    body: input,
-  });
+export function startRun(input: { testId: string; testName: string; liveMode?: boolean }) {
+  return jsonRequest<{ run: TestRun }>('/api/runs', { method: 'POST', body: input });
 }
 
-export function getTestRun(runId: string) {
+export function getRun(runId: string) {
   return request<{ run: TestRun }>(`/api/runs/${encodeURIComponent(runId)}`);
+}
+
+export function listRuns() {
+  return request<{ runs: TestRun[] }>('/api/runs');
+}
+
+export function cancelRun(runId: string) {
+  return jsonRequest<{ cancelled: boolean }>(
+    `/api/runs/${encodeURIComponent(runId)}/cancel`,
+    { method: 'POST', body: {} },
+  );
+}
+
+export function artifactUrl(runId: string, relativePath: string) {
+  return `/api/runs/${encodeURIComponent(runId)}/artifacts/${relativePath
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`;
+}
+
+export interface RunEvent {
+  type: string;
+  stepId?: string;
+  error?: string | null;
+  status?: string;
+  seq: number;
+}
+
+export function streamRunEvents(
+  runId: string,
+  handlers: { onEvent: (event: RunEvent) => void; onError?: () => void },
+): () => void {
+  const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/events`);
+
+  source.onmessage = (message) => {
+    try {
+      handlers.onEvent(JSON.parse(message.data) as RunEvent);
+    } catch {
+      // A malformed frame must not tear down the stream.
+    }
+  };
+
+  source.onerror = () => handlers.onError?.();
+
+  return () => source.close();
 }

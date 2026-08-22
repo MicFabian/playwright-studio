@@ -1,79 +1,6 @@
-import type { Edge, Node } from '@xyflow/react';
+import type { FlowDocument } from './lib/flowCore';
 
-export type FlowBlockKind =
-  | 'navigate'
-  | 'click'
-  | 'fill'
-  | 'assert'
-  | 'extract'
-  | 'condition'
-  | 'loop'
-  | 'code'
-  | 'freetext'
-  | 'snippet';
-
-export type FlowBlockCategory =
-  | 'entry'
-  | 'action'
-  | 'assertion'
-  | 'logic'
-  | 'annotation'
-  | 'snippet';
-
-export interface BlockFieldOption {
-  label: string;
-  value: string;
-}
-
-export type SelectorStrategy =
-  | 'data-testid'
-  | 'name'
-  | 'id'
-  | 'placeholder'
-  | 'text'
-  | 'css';
-
-export type SelectorFieldPrefix = 'locator' | 'target' | 'guard';
-
-export interface BlockField {
-  key: string;
-  label: string;
-  value: string;
-  placeholder?: string;
-  multiline?: boolean;
-  control?: 'text' | 'select';
-  options?: BlockFieldOption[];
-}
-
-export interface FlowBlockTemplate {
-  kind: FlowBlockKind;
-  category: FlowBlockCategory;
-  title: string;
-  description: string;
-  accent: string;
-  codeLabel: string;
-  status: 'ready' | 'draft';
-  fields: BlockField[];
-  snippetCode?: string;
-}
-
-export interface FlowBlockData extends Record<string, unknown> {
-  kind: FlowBlockKind;
-  category: FlowBlockCategory;
-  title: string;
-  description: string;
-  accent: string;
-  codeLabel: string;
-  status: 'ready' | 'draft';
-  fields: BlockField[];
-  snippetCode?: string;
-  snippetRef?: string;
-  snippetStep?: boolean;
-  snippetStepIndex?: number;
-}
-
-export type FlowNode = Node<FlowBlockData, 'flow'>;
-export type FlowEdge = Edge<Record<string, unknown>, string>;
+export type { FlowDocument };
 
 export interface TestTreeItem {
   id: string;
@@ -96,8 +23,7 @@ export interface StoredTestFlow extends TestTreeItem {
   updatedAt: string;
   filePath: string;
   specPath: string;
-  nodes: FlowNode[];
-  edges: FlowEdge[];
+  document: FlowDocument;
 }
 
 export interface WorkspaceProject {
@@ -107,6 +33,9 @@ export interface WorkspaceProject {
     testsDir: string;
     snippetsDir: string;
     generatedTestsDir: string;
+  };
+  playwright: {
+    testImport: string;
   };
 }
 
@@ -129,19 +58,30 @@ export interface WorkspaceData {
   git: GitState;
 }
 
-export type TestRunStatus = 'queued' | 'running' | 'passed' | 'failed';
+export type TestRunStatus =
+  | 'queued'
+  | 'running'
+  | 'passed'
+  | 'failed'
+  | 'cancelling'
+  | 'cancelled'
+  | 'timedOut'
+  | 'interrupted';
+
 export type TestRunStepStatus = 'queued' | 'running' | 'passed' | 'failed';
 
 export interface TestRunStep {
   index: number;
-  nodeId: string;
-  title: string;
-  kind: FlowBlockKind;
+  stepId: string;
   status: TestRunStepStatus;
-  startedAt: string | null;
-  finishedAt: string | null;
+  durationMs: number | null;
   error: string | null;
-  screenshotUrl: string | null;
+}
+
+export interface RunArtifact {
+  kind: 'trace' | 'video' | 'screenshot' | 'other';
+  relativePath: string;
+  sizeBytes: number;
 }
 
 export interface TestRun {
@@ -150,11 +90,10 @@ export interface TestRun {
   testName: string;
   status: TestRunStatus;
   liveMode: boolean;
-  slowMoMs: number;
   startedAt: string | null;
   finishedAt: string | null;
-  currentStepIndex: number | null;
-  totalSteps: number;
   error: string | null;
-  stepResults: TestRunStep[];
+  steps: TestRunStep[];
+  artifacts?: RunArtifact[];
+  diagnostics?: { severity: string; code: string; message: string; stepId?: string }[];
 }
