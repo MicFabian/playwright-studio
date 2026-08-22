@@ -48,6 +48,7 @@ export class RunManager extends EventEmitter {
     runsDir,
     compile,
     loadDocument,
+    resolveCompileOptions,
     testImport = '@playwright/test',
   }) {
     super();
@@ -57,6 +58,7 @@ export class RunManager extends EventEmitter {
     this.compile = compile;
     this.loadDocument = loadDocument;
     this.testImport = testImport;
+    this.resolveCompileOptions = resolveCompileOptions;
     this.active = new Map();
   }
 
@@ -216,9 +218,11 @@ export class RunManager extends EventEmitter {
 
     await fs.mkdir(artifactsDir, { recursive: true });
 
+    const resolved = (await this.resolveCompileOptions?.()) ?? {};
     const compiled = this.compile(document, {
-      profile: 'studio-run',
       testImport: this.testImport,
+      ...resolved,
+      profile: 'studio-run',
     });
 
     const blocking = compiled.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');

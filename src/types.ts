@@ -51,8 +51,19 @@ export interface GitState {
   root: string | null;
 }
 
+export interface PlaywrightConfigInfo {
+  configPath: string | null;
+  testDir: string | null;
+  baseURL: string | null;
+  testIdAttribute: string | null;
+  projects: { name: string; device?: string }[];
+  hasWebServer: boolean;
+  diagnostics: { code: string; message: string }[];
+}
+
 export interface WorkspaceData {
   project: WorkspaceProject;
+  playwrightConfig: PlaywrightConfigInfo;
   tests: StoredTestFlow[];
   snippets: SnippetItem[];
   git: GitState;

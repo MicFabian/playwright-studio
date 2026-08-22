@@ -1,5 +1,6 @@
 import { FileDown, FilePlus, FileText } from 'lucide-react';
 import type { WorkspaceData } from '../../types';
+import { ConfigBadge } from './ConfigBadge';
 
 interface WorkspaceExplorerProps {
   workspace: WorkspaceData | null;
@@ -47,6 +48,8 @@ export function WorkspaceExplorer({
           </li>
         ))}
       </ul>
+
+      <ConfigBadge config={workspace?.playwrightConfig} />
 
       {workspace?.git.available ? (
         <footer className="explorer__git">

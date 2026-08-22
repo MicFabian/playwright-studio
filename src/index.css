@@ -238,7 +238,6 @@ button.danger {
 }
 
 .explorer__git {
-  margin-top: auto;
   display: flex;
   justify-content: space-between;
   gap: var(--step-2);
@@ -924,4 +923,58 @@ button.danger {
   padding-left: var(--step-4);
   font-size: 0.74rem;
   color: var(--text-3);
+}
+
+.config-badge {
+  margin-top: auto;
+  border-top: 1px solid var(--rail-border);
+  padding: var(--step-2);
+  font-size: 0.72rem;
+  color: var(--rail-text-dim);
+}
+
+.config-badge summary {
+  display: flex;
+  align-items: center;
+  gap: var(--step-1);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-badge summary::-webkit-details-marker {
+  display: none;
+}
+
+.config-badge[open] summary {
+  color: var(--rail-text);
+  margin-bottom: var(--step-2);
+}
+
+.config-badge__body {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px var(--step-2);
+  margin: 0;
+}
+
+.config-badge__body dt {
+  font-family: var(--mono);
+  color: var(--rail-text-dim);
+}
+
+.config-badge__body dd {
+  margin: 0;
+  color: var(--rail-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.config-badge__diagnostics {
+  margin: var(--step-2) 0 0;
+  padding-left: var(--step-3);
+  color: var(--rail-text-dim);
 }

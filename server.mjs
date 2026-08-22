@@ -21,7 +21,10 @@ import {
   migrateV1Flow,
 } from './packages/flow-core/dist/index.mjs';
 import { RunManager } from './packages/studio-runner/src/run-manager.mjs';
-import { importSpecSource } from './packages/flow-import/dist/index.mjs';
+import {
+  importSpecSource,
+  readPlaywrightConfig,
+} from './packages/flow-import/dist/index.mjs';
 
 const execFileAsync = promisify(execFile);
 const installRoot = process.cwd();
@@ -66,6 +69,15 @@ const runManager = new RunManager({
   workspaceDir: rootDir,
   runsDir: path.join(rootDir, runsRootRelative),
   compile: compileFlow,
+  resolveCompileOptions: async () => {
+    const project = await readProject();
+    const playwrightConfig = await discoverPlaywrightConfig(project);
+
+    return {
+      testImport: project.playwright.testImport,
+      baseURL: playwrightConfig.baseURL,
+    };
+  },
 });
 
 function nowIso() {
@@ -144,6 +156,9 @@ async function readProject() {
         testImport: String(
           parsed.playwright?.testImport || defaultProject.playwright.testImport,
         ),
+        ...(parsed.playwright?.configPath
+          ? { configPath: String(parsed.playwright.configPath) }
+          : {}),
       },
     };
   } catch {
@@ -312,12 +327,50 @@ async function getGitStatus() {
   }
 }
 
+const CONFIG_CANDIDATES = [
+  'playwright.config.ts',
+  'playwright.config.js',
+  'playwright.config.mjs',
+];
+
+async function discoverPlaywrightConfig(project) {
+  const configured = project.playwright.configPath;
+  const candidates = configured ? [configured, ...CONFIG_CANDIDATES] : CONFIG_CANDIDATES;
+
+  for (const candidate of candidates) {
+    try {
+      const source = await fs.readFile(path.join(rootDir, candidate), 'utf8');
+      return readPlaywrightConfig(source, candidate);
+    } catch {
+      continue;
+    }
+  }
+
+  return {
+    configPath: null,
+    testDir: null,
+    baseURL: null,
+    testIdAttribute: null,
+    projects: [],
+    hasWebServer: false,
+    fixtureImports: [],
+    diagnostics: [
+      {
+        code: 'no-config',
+        message:
+          'No Playwright config was found in this workspace. Generated specs use Studio defaults.',
+      },
+    ],
+  };
+}
+
 async function getWorkspace() {
   const project = await readProject();
   await ensureWorkspaceLayout(project);
 
   return {
     project,
+    playwrightConfig: await discoverPlaywrightConfig(project),
     tests: await loadTests(project),
     snippets: await loadSnippets(project),
     git: await getGitStatus(),
@@ -340,7 +393,11 @@ async function persistTest(project, payload, fallbackId) {
     ...(payload.document?.testOptions ? { testOptions: payload.document.testOptions } : {}),
   };
 
-  const compiled = compileFlow(document, { testImport: project.playwright.testImport });
+  const playwrightConfig = await discoverPlaywrightConfig(project);
+  const compiled = compileFlow(document, {
+    testImport: project.playwright.testImport,
+    baseURL: playwrightConfig.baseURL,
+  });
 
   await writeFileAtomic(
     path.join(rootDir, filePath),

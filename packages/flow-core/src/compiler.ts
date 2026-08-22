@@ -34,6 +34,7 @@ export type CompileProfile = 'commit' | 'studio-run';
 export interface CompileOptions {
   profile?: CompileProfile;
   testImport?: string;
+  baseURL?: string | null;
 }
 
 const RESERVED_IDENTIFIERS = new Set([
@@ -133,6 +134,7 @@ class Compiler {
     private readonly document: FlowDocument,
     private readonly profile: CompileProfile,
     private readonly testImport: string,
+    private readonly baseURL: string | null,
   ) {}
 
   private error(code: string, message: string, stepId?: string): void {
@@ -239,6 +241,15 @@ class Compiler {
     }
 
     return expression;
+  }
+
+  private navigationUrl(step: NavigateStep): string {
+    if (this.baseURL && step.url.source === 'literal' && step.url.value.startsWith(this.baseURL)) {
+      const relative = step.url.value.slice(this.baseURL.length);
+      return quote(relative.startsWith('/') ? relative : `/${relative}`);
+    }
+
+    return this.value(step.url, step.id);
   }
 
   private timeout(timeoutMs: number | undefined): string {
@@ -361,7 +372,7 @@ class Compiler {
       case 'navigate': {
         const navigate = step as NavigateStep;
         const options = navigate.waitUntil ? `, { waitUntil: ${quote(navigate.waitUntil)} }` : '';
-        this.emitter.push(`await page.goto(${this.value(navigate.url, step.id)}${options});`);
+        this.emitter.push(`await page.goto(${this.navigationUrl(navigate)}${options});`);
         return;
       }
       case 'click': {
@@ -701,6 +712,7 @@ export function compileFlow(document: FlowDocument, options: CompileOptions = {}
     document,
     options.profile ?? 'commit',
     options.testImport ?? '@playwright/test',
+    options.baseURL ?? null,
   );
 
   return compiler.compile();

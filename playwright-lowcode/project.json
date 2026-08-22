@@ -1,10 +1,13 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "name": "Playwright Low-Code Studio",
   "paths": {
     "testsDir": "playwright-lowcode/tests",
     "snippetsDir": "playwright-lowcode/snippets",
     "generatedTestsDir": "tests/generated"
+  },
+  "playwright": {
+    "testImport": "@playwright/test",
+    "configPath": "playwright.generated.config.ts"
   }
 }
-

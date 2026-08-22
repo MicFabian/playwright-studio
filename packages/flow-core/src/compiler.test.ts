@@ -379,6 +379,54 @@ describe('test options', () => {
   });
 });
 
+describe('baseURL awareness', () => {
+  const navigate = (url: string): FlowStep[] => [
+    { id: 'a', kind: 'navigate', url: { source: 'literal', value: url } },
+  ];
+
+  it('shortens a URL that sits under the workspace baseURL', () => {
+    const { source } = compileFlow(doc(navigate('https://app.example.com/login')), {
+      baseURL: 'https://app.example.com',
+    });
+
+    expect(source).toContain('await page.goto("/login");');
+  });
+
+  it('adds the leading slash when baseURL has a trailing one', () => {
+    const { source } = compileFlow(doc(navigate('https://app.example.com/login')), {
+      baseURL: 'https://app.example.com/',
+    });
+
+    expect(source).toContain('await page.goto("/login");');
+  });
+
+  it('keeps an unrelated absolute URL intact', () => {
+    const { source } = compileFlow(doc(navigate('https://other.example.com/x')), {
+      baseURL: 'https://app.example.com',
+    });
+
+    expect(source).toContain('await page.goto("https://other.example.com/x");');
+  });
+
+  it('keeps absolute URLs when no baseURL is configured', () => {
+    const { source } = compileFlow(doc(navigate('https://app.example.com/login')));
+
+    expect(source).toContain('await page.goto("https://app.example.com/login");');
+  });
+
+  it('leaves a variable URL alone', () => {
+    const { source } = compileFlow(
+      doc([
+        { id: 'x', kind: 'extract', target: testId('t'), variable: 'target' },
+        { id: 'a', kind: 'navigate', url: { source: 'variable', name: 'target' } },
+      ]),
+      { baseURL: 'https://app.example.com' },
+    );
+
+    expect(source).toContain('await page.goto(target);');
+  });
+});
+
 describe('env values', () => {
   it('reads environment variables without inlining secrets', () => {
     const { source } = compile([

@@ -1,7 +1,7 @@
 import { build } from 'esbuild';
 
 await build({
-  entryPoints: ['packages/flow-import/src/import-spec.ts'],
+  entryPoints: ['packages/flow-import/src/index.ts'],
   bundle: true,
   format: 'esm',
   platform: 'node',
