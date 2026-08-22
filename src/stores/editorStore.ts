@@ -79,8 +79,17 @@ export const useEditorStore = create<EditorState>((set, get) => {
     past: [],
     future: [],
 
-    load: (document) =>
-      set({ document, dirty: false, past: [], future: [], selectedStepId: null }),
+    load: (document) => {
+      const current = get().document;
+
+      // A refresh that arrives after the user has started editing must not
+      // discard their work; only adopt it when nothing is unsaved.
+      if (current && current.id === document.id && get().dirty) {
+        return;
+      }
+
+      set({ document, dirty: false, past: [], future: [], selectedStepId: null });
+    },
 
     markSaved: () => set({ dirty: false }),
 

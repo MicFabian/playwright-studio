@@ -14,8 +14,13 @@ function stepCount(page: Page) {
 }
 
 async function addBlock(page: Page, name: string) {
+  const button = library(page).getByRole('button', { name, exact: true });
+
+  await expect(button).toBeEnabled();
+
   const before = await stepCount(page);
-  await library(page).getByRole('button', { name, exact: true }).click();
+
+  await button.click();
   await expect.poll(() => stepCount(page)).toBe(before + 1);
 }
 
