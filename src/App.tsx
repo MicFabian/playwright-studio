@@ -13,7 +13,13 @@ import { SnippetEditor } from './features/snippets/SnippetEditor';
 import { TopBar } from './features/shell/TopBar';
 import { useEditorStore } from './stores/editorStore';
 import { useRunStore } from './stores/runStore';
-import { createSnippet, createTest, loadWorkspace, saveTest } from './lib/workspaceClient';
+import {
+  createSnippet,
+  createTest,
+  loadWorkspace,
+  renameTest,
+  saveTest,
+} from './lib/workspaceClient';
 import type { WorkspaceData } from './types';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -106,6 +112,24 @@ export default function App() {
     }
   }, [activeTest, markSaved, hydrate]);
 
+  const handleRename = useCallback(
+    async (name: string) => {
+      if (!activeTest || !name.trim() || name.trim() === activeTest.name) {
+        return;
+      }
+
+      try {
+        const { test } = await renameTest(activeTest.id, name.trim());
+        setActiveTestId(test.id);
+        await hydrate(test.id);
+      } catch (error) {
+        setSaveState('error');
+        setLoadError(error instanceof Error ? error.message : 'Rename failed.');
+      }
+    },
+    [activeTest, hydrate],
+  );
+
   const handleCreateTest = useCallback(async () => {
     const { test } = await createTest('Untitled flow');
     await hydrate(test.id);
@@ -176,6 +200,7 @@ export default function App() {
         onSave={handleSave}
         onRun={handleRun}
         onRename={(name) => useEditorStore.getState().renameFlow(name)}
+        onRenameCommitted={handleRename}
         running={runStore.run?.status === 'running' || runStore.starting}
         onCancel={() => void useRunStore.getState().cancel()}
       />

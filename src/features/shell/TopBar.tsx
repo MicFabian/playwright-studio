@@ -8,6 +8,7 @@ interface TopBarProps {
   onSave: () => void;
   onRun: (liveMode: boolean) => void;
   onRename: (name: string) => void;
+  onRenameCommitted: (name: string) => void;
   onCancel: () => void;
 }
 
@@ -26,6 +27,7 @@ export function TopBar({
   onSave,
   onRun,
   onRename,
+  onRenameCommitted,
   onCancel,
 }: TopBarProps) {
   return (
@@ -37,6 +39,12 @@ export function TopBar({
           value={flowName}
           aria-label="Flow name"
           onChange={(event) => onRename(event.target.value)}
+          onBlur={(event) => onRenameCommitted(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.currentTarget.blur();
+            }
+          }}
         />
         {dirty ? <span className="topbar__badge">Unsaved</span> : null}
       </div>

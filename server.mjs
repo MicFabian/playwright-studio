@@ -455,6 +455,46 @@ async function persistTest(project, payload, fallbackId) {
   };
 }
 
+async function renameTest(project, currentId, requestedName) {
+  const tests = await loadTests(project);
+  const existing = tests.find((test) => test.id === currentId);
+
+  if (!existing) {
+    throw createHttpError(404, `Flow "${currentId}" does not exist.`);
+  }
+
+  const label = String(requestedName || '').trim();
+
+  if (!label) {
+    throw createHttpError(400, 'A flow needs a name.');
+  }
+
+  const desiredId = slugify(label);
+
+  if (desiredId !== currentId && tests.some((test) => test.id === desiredId)) {
+    throw createHttpError(409, `A flow named "${label}" already exists.`);
+  }
+
+  const renamed = await persistTest(
+    project,
+    { ...existing, id: desiredId, name: label, document: { ...existing.document, name: label } },
+    desiredId,
+  );
+
+  if (desiredId !== currentId) {
+    await fs
+      .rm(path.join(rootDir, project.paths.testsDir, `${currentId}.flow.json`), { force: true })
+      .catch(() => undefined);
+    await fs
+      .rm(path.join(rootDir, project.paths.generatedTestsDir, `${currentId}.spec.ts`), {
+        force: true,
+      })
+      .catch(() => undefined);
+  }
+
+  return renamed;
+}
+
 async function persistSnippet(project, payload, fallbackId) {
   const id = slugify(payload.id || payload.name || fallbackId || 'untitled-snippet');
   const filePath = path.join(project.paths.snippetsDir, `${id}.snippet.json`).replaceAll(
@@ -914,6 +954,7 @@ async function handleApi(request, response) {
     }
 
     const testMatch = url.pathname.match(/^\/api\/tests\/([^/]+)$/);
+    const testRenameMatch = url.pathname.match(/^\/api\/tests\/([^/]+)\/rename$/);
     const snippetMatch = url.pathname.match(/^\/api\/snippets\/([^/]+)$/);
 
     if (request.method === 'PUT' && testMatch) {
@@ -923,6 +964,18 @@ async function handleApi(request, response) {
 
       sendJson(response, 200, {
         test,
+        git: await getGitStatus(),
+      });
+      return;
+    }
+
+    if (request.method === 'POST' && testRenameMatch) {
+      const body = await parseBody(request);
+      const currentId = slugify(testRenameMatch[1]);
+      const renamed = await renameTest(project, currentId, body.name);
+
+      sendJson(response, 200, {
+        test: renamed,
         git: await getGitStatus(),
       });
       return;

@@ -127,6 +127,13 @@ export function saveTest(test: Pick<StoredTestFlow, 'id' | 'name' | 'status'> & 
   });
 }
 
+export function renameTest(testId: string, name: string) {
+  return jsonRequest<{ test: StoredTestFlow; git: GitState }>(
+    `/api/tests/${encodeURIComponent(testId)}/rename`,
+    { method: 'POST', body: { name } },
+  );
+}
+
 export function createTest(name?: string) {
   return jsonRequest<{ test: StoredTestFlow; git: GitState }>('/api/tests', {
     method: 'POST',

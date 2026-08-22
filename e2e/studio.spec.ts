@@ -107,6 +107,16 @@ test('undo reverses an edit', async ({ page }) => {
   await expect.poll(() => stepCount(page)).toBe(before);
 });
 
+test('renaming a flow renames its files', async ({ page }) => {
+  const name = page.locator('.topbar__name');
+
+  await name.fill('Renamed by test');
+  await name.press('Enter');
+
+  await expect(page.locator('.explorer__list button', { hasText: 'Renamed by test' })).toBeVisible();
+  await expect(name).toHaveValue('Renamed by test');
+});
+
 test('importing a spec previews fidelity before adopting', async ({ page }) => {
   await page.locator('.explorer').getByRole('button', { name: 'Import spec' }).click();
 
