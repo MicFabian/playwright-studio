@@ -1506,3 +1506,151 @@ button.danger {
   border-radius: var(--radius);
   box-shadow: var(--shadow-2);
 }
+
+.record {
+  overflow-y: auto;
+  padding: var(--step-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-3);
+  min-height: 0;
+}
+
+.record--empty {
+  color: var(--text-3);
+  font-size: 0.85rem;
+}
+
+.record__head {
+  display: flex;
+  align-items: center;
+  gap: var(--step-2);
+  padding: var(--step-2) var(--step-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 0.85rem;
+}
+
+.record__head--recording {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.record__head--review {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.record__pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: record-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes record-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record__pulse {
+    animation: none;
+  }
+}
+
+.record__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.82rem;
+}
+
+.record__note {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.78rem;
+}
+
+.record__note--warn {
+  color: var(--warning);
+}
+
+.record__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.record__steps li {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr auto;
+  align-items: baseline;
+  gap: var(--step-2);
+  padding: var(--step-1) var(--step-2);
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+}
+
+.record__steps li:hover {
+  background: var(--surface-2);
+}
+
+.record__step--code {
+  border-left: 2px solid var(--warning);
+}
+
+.record__kind {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.record__detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+}
+
+.record__steps button {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 var(--step-1);
+}
+
+.record__steps button:hover {
+  color: var(--danger);
+}
+
+.record__actions {
+  display: flex;
+  gap: var(--step-2);
+  margin-top: auto;
+  padding-top: var(--step-3);
+  border-top: 1px solid var(--border);
+}
+
+.record__actions button {
+  flex: 1;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: var(--step-2);
+  font-size: 0.85rem;
+}
+
+.record__actions button.secondary {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border);
+}

@@ -188,6 +188,62 @@ export function cancelRun(runId: string) {
   });
 }
 
+export interface RecordingState {
+  id: string;
+  flowId: string;
+  status: 'starting' | 'recording' | 'stopping' | 'review' | 'failed' | 'timedOut';
+  steps: FlowDocument['root']['steps'];
+  diagnostics: { severity: string; code: string; message: string; line: number }[];
+  error: string | null;
+}
+
+export function startRecording(input: { testId: string; startUrl?: string }) {
+  return jsonRequest<{ recording: RecordingState }>('/api/recordings', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export function stopRecording(recordingId: string) {
+  return jsonRequest<{ recording: RecordingState }>(
+    `/api/recordings/${encodeURIComponent(recordingId)}/stop`,
+    { method: 'POST', body: {} },
+  );
+}
+
+export function acceptRecording(recordingId: string) {
+  return jsonRequest<{ steps: FlowDocument['root']['steps'] }>(
+    `/api/recordings/${encodeURIComponent(recordingId)}/accept`,
+    { method: 'POST', body: {} },
+  );
+}
+
+export function discardRecording(recordingId: string) {
+  return jsonRequest<{ discarded: boolean }>(`/api/recordings/${encodeURIComponent(recordingId)}`, {
+    method: 'DELETE',
+    body: {},
+  });
+}
+
+export function streamRecordingEvents(
+  recordingId: string,
+  handlers: { onEvent: (event: Record<string, unknown>) => void; onError?: () => void },
+): () => void {
+  const source = new EventSource(`/api/recordings/${encodeURIComponent(recordingId)}/events`);
+
+  source.onmessage = (message) => {
+    try {
+      handlers.onEvent(JSON.parse(message.data));
+    } catch {
+      // A malformed frame must not tear down the stream.
+    }
+  };
+
+  source.onerror = () => handlers.onError?.();
+
+  return () => source.close();
+}
+
 export function artifactUrl(runId: string, relativePath: string) {
   return `/api/runs/${encodeURIComponent(runId)}/artifacts/${relativePath
     .split('/')

@@ -7,6 +7,7 @@ import { BlockLibrary } from './features/flow/BlockLibrary';
 import { WorkspaceExplorer } from './features/workspace/WorkspaceExplorer';
 import { EmptyWorkspace } from './features/workspace/EmptyWorkspace';
 import { RunPanel } from './features/run/RunPanel';
+import { RecordPanel } from './features/record/RecordPanel';
 import { ImportDialog } from './features/import/ImportDialog';
 import { CodePreview } from './features/flow/CodePreview';
 import { DataPanel } from './features/flow/DataPanel';
@@ -16,6 +17,7 @@ import { ErrorBoundary } from './features/shell/ErrorBoundary';
 import { CommandPalette } from './features/shell/CommandPalette';
 import { useEditorStore } from './stores/editorStore';
 import { useRunStore } from './stores/runStore';
+import { useRecordingStore } from './stores/recordingStore';
 import {
   createSnippet,
   createTest,
@@ -34,7 +36,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [panel, setPanel] = useState<'inspector' | 'data' | 'code' | 'run' | 'snippet'>(
+  const [panel, setPanel] = useState<'inspector' | 'data' | 'code' | 'run' | 'snippet' | 'record'>(
     'inspector',
   );
   const [importing, setImporting] = useState(false);
@@ -205,6 +207,16 @@ export default function App() {
     const { test } = await createTest('Untitled flow');
     await hydrate(test.id);
   }, [hydrate]);
+
+  const handleRecord = useCallback(async () => {
+    if (!activeTest) {
+      return;
+    }
+
+    setPanel('record');
+    await handleSave();
+    await useRecordingStore.getState().start(activeTest.id);
+  }, [activeTest, handleSave]);
 
   const handleRun = useCallback(
     async (liveMode: boolean) => {
@@ -385,6 +397,8 @@ export default function App() {
         onRenameCommitted={handleRename}
         running={runStore.run?.status === 'running' || runStore.starting}
         onCancel={() => void useRunStore.getState().cancel()}
+        onRecord={() => void handleRecord()}
+        recording={useRecordingStore.getState().status !== 'idle'}
       />
 
       <div className="studio__body">
@@ -434,6 +448,7 @@ export default function App() {
                 ...(activeSnippetId ? (['snippet'] as const) : []),
                 'code',
                 'run',
+                'record',
               ] as const
             ).map((tab) => (
               <button
@@ -450,7 +465,9 @@ export default function App() {
                       ? 'Snippet'
                       : tab === 'code'
                         ? 'Code'
-                        : 'Run'}
+                        : tab === 'record'
+                          ? 'Record'
+                          : 'Run'}
               </button>
             ))}
           </nav>
@@ -471,6 +488,7 @@ export default function App() {
               />
             ) : null}
             {panel === 'run' ? <RunPanel /> : null}
+            {panel === 'record' ? <RecordPanel /> : null}
           </ErrorBoundary>
         </section>
       </div>
@@ -486,6 +504,7 @@ export default function App() {
           { label: 'Run headed', hint: 'Ctrl/Cmd Shift Enter', run: () => void handleRun(true) },
           { label: 'New flow', run: () => void handleCreateTest() },
           { label: 'Import a spec', run: () => setImporting(true) },
+          { label: 'Record a flow', run: () => void handleRecord() },
           { label: 'Undo', hint: 'Ctrl/Cmd Z', run: undo },
           { label: 'Redo', hint: 'Ctrl/Cmd Shift Z', run: redo },
           { label: 'Show generated code', run: () => setPanel('code') },

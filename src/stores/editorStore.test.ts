@@ -153,6 +153,57 @@ describe('undo and redo', () => {
   });
 });
 
+describe('recorded steps', () => {
+  it('appends a whole recording that one undo removes', () => {
+    store().load(document());
+    store().appendStep('navigate');
+    store().markSaved();
+
+    store().insertRecordedSteps([
+      {
+        id: 'r1',
+        kind: 'click',
+        target: { base: { by: 'testId', value: { source: 'literal', value: 'a' } } },
+      },
+      {
+        id: 'r2',
+        kind: 'fill',
+        target: { base: { by: 'testId', value: { source: 'literal', value: 'b' } } },
+        value: { source: 'literal', value: 'x' },
+      },
+    ]);
+
+    expect(countSteps(store().document!.root)).toBe(3);
+    expect(
+      store()
+        .document!.root.steps.slice(1)
+        .map((step) => step.id),
+    ).toEqual(['r1', 'r2']);
+
+    store().undo();
+
+    expect(countSteps(store().document!.root)).toBe(1);
+  });
+
+  it('keeps the recorded order and selects the first step', () => {
+    store().load(document());
+    store().insertRecordedSteps([
+      { id: 'r1', kind: 'comment', text: 'first' },
+      { id: 'r2', kind: 'comment', text: 'second' },
+    ]);
+
+    expect(store().document!.root.steps.map((step) => step.id)).toEqual(['r1', 'r2']);
+    expect(store().selectedStepId).toBe('r1');
+  });
+
+  it('does nothing when a recording captured no steps', () => {
+    store().load(document());
+    store().insertRecordedSteps([]);
+
+    expect(store().dirty).toBe(false);
+  });
+});
+
 describe('data tables', () => {
   it('stores a data set and removes it when the rows go', () => {
     store().load(document());

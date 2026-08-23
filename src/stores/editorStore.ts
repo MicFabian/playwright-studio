@@ -39,6 +39,7 @@ interface EditorState {
   wrapStep: (stepId: string, kind: Extract<FlowStepKind, 'condition' | 'loop' | 'try'>) => void;
   moveNode: (stepId: string, position: { x: number; y: number }) => void;
   renameFlow: (name: string) => void;
+  insertRecordedSteps: (steps: FlowStep[]) => void;
   setDataSet: (data: FlowDocument['data']) => void;
 
   undo: () => void;
@@ -202,6 +203,28 @@ export const useEditorStore = create<EditorState>((set, get) => {
       if (document) {
         commit({ ...document, name });
       }
+    },
+
+    insertRecordedSteps: (steps) => {
+      const { document } = get();
+
+      if (!document || steps.length === 0) {
+        return;
+      }
+
+      // One commit for the whole recording, so a single undo removes it all.
+      const next = steps.reduce(
+        (draft, step) =>
+          insertStep(draft, step, {
+            parentId: null,
+            slot: null,
+            index: draft.root.steps.length,
+          }),
+        document,
+      );
+
+      commit(next);
+      set({ selectedStepId: steps[0]?.id ?? null });
     },
 
     setDataSet: (data) => {

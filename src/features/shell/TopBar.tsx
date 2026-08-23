@@ -1,4 +1,4 @@
-import { Play, Save, Square, Zap } from 'lucide-react';
+import { Circle, Play, Save, Square, Zap } from 'lucide-react';
 
 interface TopBarProps {
   flowName: string;
@@ -10,6 +10,8 @@ interface TopBarProps {
   onRename: (name: string) => void;
   onRenameCommitted: (name: string) => void;
   onCancel: () => void;
+  onRecord: () => void;
+  recording: boolean;
 }
 
 const SAVE_LABELS = {
@@ -29,6 +31,8 @@ export function TopBar({
   onRename,
   onRenameCommitted,
   onCancel,
+  onRecord,
+  recording,
 }: TopBarProps) {
   return (
     <header className="topbar">
@@ -67,6 +71,9 @@ export function TopBar({
             </button>
             <button type="button" onClick={() => onRun(true)}>
               <Zap size={14} aria-hidden /> Run headed
+            </button>
+            <button type="button" onClick={onRecord} disabled={recording}>
+              <Circle size={14} aria-hidden /> {recording ? 'Recording' : 'Record'}
             </button>
           </>
         )}
