@@ -1,5 +1,5 @@
-import * as icons from 'lucide-react';
 import { blockLibrary, blockRegistry, type BlockCategory } from '../../lib/flowCore';
+import { BlockIcon } from './BlockIcon';
 import { useEditorStore } from '../../stores/editorStore';
 
 const CATEGORY_ORDER: BlockCategory[] = ['entry', 'action', 'assertion', 'logic', 'annotation'];
@@ -11,11 +11,6 @@ const CATEGORY_LABELS: Record<BlockCategory, string> = {
   logic: 'Logic',
   annotation: 'Notes',
 };
-
-function Icon({ name }: { name: string }) {
-  const Component = (icons as unknown as Record<string, icons.LucideIcon>)[name];
-  return Component ? <Component size={14} aria-hidden /> : null;
-}
 
 export function BlockLibrary() {
   const appendStep = useEditorStore((state) => state.appendStep);
@@ -46,7 +41,7 @@ export function BlockLibrary() {
                   style={{ '--block-accent': definition.accentToken } as React.CSSProperties}
                   onClick={() => appendStep(kind)}
                 >
-                  <Icon name={definition.icon} />
+                  <BlockIcon name={definition.icon} />
                   <span>{definition.title}</span>
                 </button>
               );

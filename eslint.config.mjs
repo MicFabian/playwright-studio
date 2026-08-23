@@ -27,6 +27,15 @@ export default tseslint.config(
       ],
       '@typescript-eslint/no-explicit-any': 'error',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+      // A namespace import of an icon library defeats tree shaking: this one
+      // cost about 800 kB of JavaScript before it was caught.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "ImportNamespaceSpecifier[parent.source.value='lucide-react']",
+          message: 'Import the icons you use by name; a namespace import bundles all of them.',
+        },
+      ],
       eqeqeq: ['error', 'always', { null: 'ignore' }],
     },
   },

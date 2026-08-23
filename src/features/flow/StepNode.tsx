@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
-import * as icons from 'lucide-react';
 import { emptyScopeSlots, type FlowStep, type ScopeSlot } from '../../lib/flowCore';
+import { BlockIcon } from './BlockIcon';
 import { useEditorStore } from '../../stores/editorStore';
 import { useRunStore } from '../../stores/runStore';
 
@@ -15,11 +15,6 @@ export interface StepNodeData extends Record<string, unknown> {
   depth: number;
   slot: ScopeSlot | null;
   step: FlowStep;
-}
-
-function Icon({ name }: { name: string }) {
-  const Component = (icons as unknown as Record<string, icons.LucideIcon>)[name];
-  return Component ? <Component size={14} aria-hidden /> : null;
 }
 
 function StepNodeComponent({ id, data, selected }: NodeProps<Node<StepNodeData>>) {
@@ -43,7 +38,7 @@ function StepNodeComponent({ id, data, selected }: NodeProps<Node<StepNodeData>>
 
       <header className="step-node__head">
         <span className="step-node__icon">
-          <Icon name={data.icon} />
+          <BlockIcon name={data.icon} />
         </span>
         <span className="step-node__title">{data.title}</span>
         {stepStatus ? (
