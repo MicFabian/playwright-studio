@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import type { SnippetItem, SnippetParamType } from '../../types';
 import { saveSnippet } from '../../lib/workspaceClient';
@@ -13,10 +13,24 @@ interface SnippetEditorProps {
 export function SnippetEditor({ snippet, onSaved }: SnippetEditorProps) {
   const [draft, setDraft] = useState<SnippetItem | null>(snippet);
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+
+  dirtyRef.current = dirty;
 
   useEffect(() => {
-    setDraft(snippet);
-    setState('idle');
+    // A workspace refresh hands back a new object for the same snippet; adopting
+    // it would throw away whatever the user is in the middle of typing.
+    setDraft((current) => {
+      if (current && snippet && current.id === snippet.id && dirtyRef.current) {
+        return current;
+      }
+
+      setDirty(false);
+      return snippet;
+    });
+
+    setState((current) => (dirtyRef.current ? current : 'idle'));
   }, [snippet]);
 
   if (!draft) {
@@ -25,6 +39,7 @@ export function SnippetEditor({ snippet, onSaved }: SnippetEditorProps) {
 
   const update = (next: Partial<SnippetItem>) => {
     setDraft({ ...draft, ...next });
+    setDirty(true);
     setState('idle');
   };
 
@@ -33,6 +48,7 @@ export function SnippetEditor({ snippet, onSaved }: SnippetEditorProps) {
 
     try {
       await saveSnippet(draft);
+      setDirty(false);
       setState('saved');
       onSaved();
     } catch {
@@ -219,14 +235,14 @@ export function SnippetEditor({ snippet, onSaved }: SnippetEditorProps) {
       </label>
 
       <footer className="snippets__actions">
-        <button type="button" onClick={save} disabled={state === 'saving'}>
+        <button type="button" onClick={save} disabled={state === 'saving' || !dirty}>
           {state === 'saving'
             ? 'Saving…'
-            : state === 'saved'
-              ? 'Saved'
-              : state === 'error'
-                ? 'Save failed'
-                : 'Save snippet'}
+            : state === 'error'
+              ? 'Save failed'
+              : dirty
+                ? 'Save snippet'
+                : 'Saved'}
         </button>
       </footer>
     </div>

@@ -39,6 +39,7 @@ export default function App() {
   );
   const [importing, setImporting] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [saveAttempt, setSaveAttempt] = useState(0);
   const [activeSnippetId, setActiveSnippetId] = useState<string | null>(null);
 
   const document = useEditorStore((state) => state.document);
@@ -86,6 +87,7 @@ export default function App() {
   );
 
   const handleSaveRef = useRef<(() => Promise<boolean>) | null>(null);
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
 
   const handleSelectTest = useCallback(
     async (testId: string) => {
@@ -108,7 +110,7 @@ export default function App() {
     [workspace, activeTestId, load],
   );
 
-  const handleSave = useCallback(async (): Promise<boolean> => {
+  const performSave = useCallback(async (): Promise<boolean> => {
     const current = useEditorStore.getState().document;
 
     if (!current || !activeTest) {
@@ -133,6 +135,7 @@ export default function App() {
       }
 
       setSaveState('saved');
+      setSaveAttempt(0);
       saved = true;
       setWorkspace((previous) =>
         previous
@@ -150,6 +153,24 @@ export default function App() {
     }
 
     return saved;
+  }, [activeTest, markSaved]);
+
+  const handleSave = useCallback(async (): Promise<boolean> => {
+    // Saves are serialized: two writes of one flow could otherwise land out of
+    // order, leaving the older document on disk while the UI reports success.
+    const previous = saveChainRef.current;
+    let release: () => void = () => undefined;
+    saveChainRef.current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await previous;
+
+    try {
+      return await performSave();
+    } finally {
+      release();
+    }
   }, [activeTest, markSaved]);
 
   handleSaveRef.current = handleSave;
@@ -213,12 +234,22 @@ export default function App() {
 
     // Keyed on the document too: a drag emits a change per frame, and without
     // that dependency the debounce timer is only ever cleared, never fired.
-    const timer = window.setTimeout(() => {
-      void handleSave();
-    }, 1200);
+    const timer = window.setTimeout(
+      () => {
+        void handleSave().then((saved) => {
+          // Nothing about the document changes when a save fails, so without an
+          // explicit nudge the effect would never run again and the edits would
+          // sit unsaved until the user noticed.
+          if (!saved) {
+            setSaveAttempt((attempt) => attempt + 1);
+          }
+        });
+      },
+      saveAttempt === 0 ? 1200 : Math.min(30_000, 2000 * 2 ** (saveAttempt - 1)),
+    );
 
     return () => window.clearTimeout(timer);
-  }, [dirty, document, activeTest, handleSave]);
+  }, [dirty, document, activeTest, handleSave, saveAttempt]);
 
   useEffect(() => {
     // The desktop shell asks about unsaved work before relaunching, which

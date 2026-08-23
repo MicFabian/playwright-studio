@@ -1141,6 +1141,10 @@ export async function startStudio() {
   return start();
 }
 
+export async function stopStudio() {
+  await runManager.shutdown().catch(() => undefined);
+}
+
 export function studioLaunchUrl() {
   return launchUrl(securityContext, host, activePort);
 }

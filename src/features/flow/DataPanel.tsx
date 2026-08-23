@@ -15,6 +15,12 @@ export function DataPanel() {
   const data = document.data ?? EMPTY;
   const hasData = data.cases.length > 0;
 
+  const duplicateColumns = new Set(
+    data.columns
+      .map((column) => column.name)
+      .filter((name, index, names) => names.indexOf(name) !== index),
+  );
+
   const update = (next: DataSet) => setDataSet(next);
 
   const mutate = (change: (current: DataSet) => DataSet) => {
@@ -91,17 +97,28 @@ export function DataPanel() {
                     <input
                       value={column.name}
                       aria-label={`Column ${columnIndex + 1} name`}
+                      aria-invalid={duplicateColumns.has(column.name)}
                       onChange={(event) => {
                         const previous = column.name;
                         const name = event.target.value;
+
+                        // Moving values onto an existing column name would
+                        // overwrite that column's cells, so rename the header
+                        // only and let the duplicate be reported instead.
+                        const collides = data.columns.some(
+                          (candidate, index) => index !== columnIndex && candidate.name === name,
+                        );
+
                         update({
                           columns: data.columns.map((candidate, index) =>
                             index === columnIndex ? { name } : candidate,
                           ),
-                          cases: data.cases.map((row) => {
-                            const { [previous]: moved, ...rest } = row.values;
-                            return { ...row, values: { ...rest, [name]: moved ?? '' } };
-                          }),
+                          cases: collides
+                            ? data.cases
+                            : data.cases.map((row) => {
+                                const { [previous]: moved, ...rest } = row.values;
+                                return { ...row, values: { ...rest, [name]: moved ?? '' } };
+                              }),
                         });
                       }}
                     />
@@ -173,6 +190,15 @@ export function DataPanel() {
             </tbody>
           </table>
         </div>
+      ) : null}
+
+      {duplicateColumns.size > 0 ? (
+        <ul className="diagnostics diagnostics--error">
+          <li>
+            Two columns are named <strong>{[...duplicateColumns].join(', ')}</strong>. Rename one —
+            the flow cannot compile until each column has its own name.
+          </li>
+        </ul>
       ) : null}
 
       {hasData ? (

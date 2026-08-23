@@ -922,6 +922,45 @@ describe('data-driven tests', () => {
   });
 });
 
+describe('a data column named like the case label', () => {
+  it('keeps the column value distinct from the case name', () => {
+    const result = compile(
+      [
+        {
+          id: 'a',
+          kind: 'fill',
+          target: testId('t'),
+          value: { source: 'variable', name: 'name' },
+        },
+      ],
+      {
+        data: {
+          columns: [{ name: 'name' }],
+          cases: [{ name: 'the case', values: { name: 'the value' } }],
+        },
+      },
+    );
+
+    expect(hasBlockingDiagnostics(result)).toBe(false);
+    expect(result.source).toContain('{ __caseName: "the case", name: "the value" },');
+    expect(result.source).toContain('for (const { __caseName, name } of cases) {');
+    expect(result.source).toContain('.fill(name);');
+    expect(result.source).not.toContain('{ name, name }');
+  });
+
+  it('uses the plain label when no column claims it', () => {
+    const { source } = compile(
+      [{ id: 'a', kind: 'navigate', url: { source: 'literal', value: '/x' } }],
+      {
+        data: { columns: [{ name: 'email' }], cases: [{ name: 'row', values: { email: 'v' } }] },
+      },
+    );
+
+    expect(source).toContain('for (const { name, email } of cases) {');
+    expect(source).not.toContain('__caseName');
+  });
+});
+
 describe('baseURL awareness', () => {
   const navigate = (url: string): FlowStep[] => [
     { id: 'a', kind: 'navigate', url: { source: 'literal', value: url } },

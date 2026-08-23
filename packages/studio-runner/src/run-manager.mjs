@@ -59,6 +59,7 @@ export class RunManager extends EventEmitter {
     this.maxConcurrentRuns = Math.max(1, maxConcurrentRuns);
     this.queue = [];
     this.running = 0;
+    this.pendingAdmissions = 0;
     this.rootDir = rootDir;
     this.workspaceDir = workspaceDir ?? rootDir;
     // The generated config imports '@playwright/test' by bare specifier, and ESM
@@ -336,7 +337,7 @@ export class RunManager extends EventEmitter {
       ].join('\n'),
     );
 
-    if (this.queue.length >= MAX_QUEUED_RUNS) {
+    if (this.queue.length + this.pendingAdmissions >= MAX_QUEUED_RUNS) {
       const rejected = {
         ...manifest,
         status: 'failed',
@@ -349,11 +350,16 @@ export class RunManager extends EventEmitter {
       return rejected;
     }
 
+    this.pendingAdmissions += 1;
     this.active.set(runId, { seq: 0, events: [], manifest });
 
-    await this.appendEvent(runId, { type: 'run:queued', runId, testId, at: Date.now() });
+    try {
+      await this.appendEvent(runId, { type: 'run:queued', runId, testId, at: Date.now() });
+      this.queue.push({ runId, configPath, manifest });
+    } finally {
+      this.pendingAdmissions -= 1;
+    }
 
-    this.queue.push({ runId, configPath, manifest });
     this.drainQueue();
 
     return manifest;
@@ -545,6 +551,14 @@ export class RunManager extends EventEmitter {
 
     await walk(artifactsDir, '');
     return found;
+  }
+
+  async shutdown() {
+    this.queue.length = 0;
+
+    await Promise.all(
+      [...this.active.keys()].map((runId) => this.cancel(runId).catch(() => false)),
+    );
   }
 
   async cancel(runId) {

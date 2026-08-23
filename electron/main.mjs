@@ -90,9 +90,10 @@ async function bootStudio(workspaceRoot) {
   }
   process.env.PORT = process.env.PORT || '0';
 
-  const { startStudio } = await import(path.join(installRoot, 'server.mjs'));
+  const { startStudio, stopStudio } = await import(path.join(installRoot, 'server.mjs'));
   const { url, server } = await startStudio();
   studioServer = server;
+  stopStudioRef = stopStudio;
 
   return url;
 }
@@ -352,8 +353,12 @@ function buildMenu() {
 }
 
 let studioServer = null;
+let stopStudioRef = null;
 
 async function shutdown() {
+  // Stop any browsers the runner started before the process goes away.
+  await stopStudioRef?.().catch(() => undefined);
+
   await new Promise((resolve) => {
     if (!studioServer) {
       resolve();

@@ -1110,9 +1110,11 @@ class Compiler {
     this.emitter.push('const cases = [');
     this.emitter.indent();
 
+    const caseLabel = columns.includes('name') ? '__caseName' : 'name';
+
     data.cases.forEach((dataCase) => {
       const entries = [
-        `name: ${quote(dataCase.name)}`,
+        `${caseLabel}: ${quote(dataCase.name)}`,
         ...columns.map((column) => `${column}: ${quote(dataCase.values[column] ?? '')}`),
       ];
       this.emitter.push(`{ ${entries.join(', ')} },`);
@@ -1124,10 +1126,10 @@ class Compiler {
 
     const destructured = columns.length > 0 ? `, ${columns.join(', ')}` : '';
 
-    this.emitter.push(`for (const { name${destructured} } of cases) {`);
+    this.emitter.push(`for (const { ${caseLabel}${destructured} } of cases) {`);
     this.emitter.indent();
     this.emitter.push(
-      `test(${quote(this.document.name)} + " — " + name${this.testOptionsArgument()}, async ({ page }) => {`,
+      `test(${quote(this.document.name)} + " — " + ${caseLabel}${this.testOptionsArgument()}, async ({ page }) => {`,
     );
     this.emitter.indent();
 
