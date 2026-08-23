@@ -97,6 +97,11 @@ const ROLE_VALUES = new Set<string>([
   'tooltip',
 ]);
 
+function finiteOr(candidate: unknown, fallback: number): number {
+  const parsed = Number(candidate);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 function literal(value: string): ValueExpr {
   return { source: 'literal', value };
 }
@@ -192,6 +197,14 @@ function readTarget(node: V1Node, prefix: 'locator' | 'target' | 'guard'): Locat
 }
 
 function orderV1Nodes(nodes: V1Node[], edges: V1Edge[]): V1Node[] {
+  // A v1 file may have nodes without ids, and every one of them would otherwise
+  // collide on the string "undefined" and all but the last would be dropped.
+  nodes.forEach((node, index) => {
+    if (!node.id) {
+      node.id = `node-${index + 1}`;
+    }
+  });
+
   const byId = new Map(nodes.map((node) => [String(node.id), node]));
   const incoming = new Map<string, number>();
   const outgoing = new Map<string, string[]>();
@@ -211,13 +224,13 @@ function orderV1Nodes(nodes: V1Node[], edges: V1Edge[]): V1Node[] {
   });
 
   const byPosition = (left: V1Node, right: V1Node) => {
-    const leftX = left.position?.x ?? 0;
-    const rightX = right.position?.x ?? 0;
+    const leftX = finiteOr(left.position?.x, 0);
+    const rightX = finiteOr(right.position?.x, 0);
     if (leftX !== rightX) {
       return leftX - rightX;
     }
 
-    return (left.position?.y ?? 0) - (right.position?.y ?? 0);
+    return finiteOr(left.position?.y, 0) - finiteOr(right.position?.y, 0);
   };
 
   const ordered: V1Node[] = [];
@@ -268,8 +281,8 @@ export function migrateV1Flow(raw: V1Flow, fallbackId: string): MigrationResult 
     const label = title && !TEMPLATE_TITLES.has(title) ? title : undefined;
 
     positions[id] = {
-      x: Number(node.position?.x ?? 0),
-      y: Number(node.position?.y ?? 0),
+      x: finiteOr(node.position?.x, 0),
+      y: finiteOr(node.position?.y, 0),
     };
 
     const base = { id, ...(label ? { label } : {}) };

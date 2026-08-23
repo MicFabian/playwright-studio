@@ -1458,3 +1458,9 @@ button.danger {
   color: var(--danger);
   box-shadow: inset 0 0 0 1px var(--danger);
 }
+
+.inspector-field__labelled {
+  display: flex;
+  flex-direction: column;
+  gap: var(--step-1);
+}

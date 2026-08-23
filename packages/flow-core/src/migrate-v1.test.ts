@@ -262,6 +262,73 @@ describe('code and snippets', () => {
   });
 });
 
+describe('malformed v1 input', () => {
+  it('keeps every node when none of them have ids', () => {
+    const { document } = migrateV1Flow(
+      {
+        id: 'f',
+        name: 'F',
+        nodes: [
+          { data: { kind: 'click', fields: [] } },
+          { data: { kind: 'fill', fields: [] } },
+          { data: { kind: 'navigate', fields: [] } },
+        ],
+        edges: [],
+      },
+      'f',
+    );
+
+    // Every id stringified to "undefined" before, so all but one were lost.
+    expect(document.root.steps).toHaveLength(3);
+    expect(new Set(document.root.steps.map((step) => step.id)).size).toBe(3);
+  });
+
+  it('replaces a position that is not a number', () => {
+    const { document } = migrateV1Flow(
+      {
+        id: 'f',
+        name: 'F',
+        nodes: [
+          {
+            id: 'a',
+            position: { x: 'abc' as unknown as number, y: 5 },
+            data: { kind: 'click', fields: [] },
+          },
+        ],
+        edges: [],
+      },
+      'f',
+    );
+
+    // NaN serialises to null, which corrupts the saved layout.
+    expect(document.layout.positions.a).toEqual({ x: 0, y: 5 });
+    expect(JSON.stringify(document)).not.toContain('null');
+  });
+
+  it('survives edges that point at nodes which do not exist', () => {
+    expect(() =>
+      migrateV1Flow(
+        {
+          id: 'f',
+          name: 'F',
+          nodes: [{ id: 'a', data: { kind: 'click', fields: [] } }],
+          edges: [{ source: 'a', target: 'ghost' }],
+        },
+        'f',
+      ),
+    ).not.toThrow();
+  });
+
+  it('survives a node whose data is missing', () => {
+    const { document } = migrateV1Flow(
+      { id: 'f', name: 'F', nodes: [{ id: 'a' }], edges: [] },
+      'f',
+    );
+
+    expect(document.root.steps).toHaveLength(1);
+  });
+});
+
 describe('round trip', () => {
   it('produces a compilable document for a realistic v1 flow', () => {
     const raw: V1Flow = {

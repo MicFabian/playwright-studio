@@ -244,6 +244,53 @@ describe('escape hatch', () => {
   });
 });
 
+describe('shapes that used to be dropped', () => {
+  it('keeps a test.step whose body is a single expression', () => {
+    const { document, fidelity } = importOne(`
+      import { test } from '@playwright/test';
+
+      test('t', async ({ page }) => {
+        await test.step('open it', async () => page.goto('https://example.com'));
+      });
+    `);
+
+    expect(document.root.steps).toHaveLength(1);
+    expect(document.root.steps[0]).toMatchObject({ kind: 'navigate', label: 'open it' });
+    expect(fidelity).toBe('structured');
+  });
+
+  it('imports a soft assertion as an assertion', () => {
+    const { document } = importOne(`
+      import { expect, test } from '@playwright/test';
+
+      test('t', async ({ page }) => {
+        await expect.soft(page.getByTestId('title')).toContainText('Hi');
+      });
+    `);
+
+    expect(document.root.steps[0]).toMatchObject({
+      kind: 'assert',
+      assertion: { type: 'containsText' },
+    });
+  });
+
+  it('keeps an unmappable expression body as code rather than losing it', () => {
+    const { document, opaqueSteps } = importOne(`
+      import { test } from '@playwright/test';
+
+      test('t', async ({ page }) => {
+        await test.step('scroll', async () => page.evaluate(() => window.scrollTo(0, 10)));
+      });
+    `);
+
+    expect(opaqueSteps).toBe(1);
+    expect(document.root.steps[0]).toMatchObject({ kind: 'code' });
+    expect(document.root.steps[0].kind === 'code' && document.root.steps[0].code).toContain(
+      'page.evaluate',
+    );
+  });
+});
+
 describe('multiple tests', () => {
   it('imports every test in a file', () => {
     const result = importSpecSource(`

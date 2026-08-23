@@ -283,7 +283,7 @@ export function describeStep(step: FlowStep): string {
     case 'comment':
       return step.text;
     case 'assertPage':
-      return step.assertion.type === 'url' ? 'URL' : 'title';
+      return step.assertion?.type === 'url' ? 'URL' : 'title';
     default:
       return blockRegistry[step.kind]?.codeLabel ?? step.kind;
   }

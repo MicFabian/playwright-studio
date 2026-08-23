@@ -8,8 +8,10 @@ export interface StepPath {
   index: number;
 }
 
-function cloneSequence(sequence: Sequence): Sequence {
-  return { steps: sequence.steps.map(cloneStep) };
+function cloneSequence(sequence: Sequence | undefined): Sequence {
+  // Hand-edited files can omit a scope body; treat it as empty rather than
+  // throwing while copying the document.
+  return { steps: Array.isArray(sequence?.steps) ? sequence.steps.map(cloneStep) : [] };
 }
 
 function cloneStep(step: FlowStep): FlowStep {
@@ -100,24 +102,21 @@ export function locateStep(document: FlowDocument, stepId: string): StepPath | n
         return;
       }
 
+      const searchIfPresent = (sequence: Sequence | undefined, slot: ScopeSlot) => {
+        if (sequence && Array.isArray(sequence.steps)) {
+          search(sequence, step.id, slot);
+        }
+      };
+
       if (step.kind === 'condition') {
-        search(step.then, step.id, 'then');
-
-        if (step.else) {
-          search(step.else, step.id, 'else');
-        }
+        searchIfPresent(step.then, 'then');
+        searchIfPresent(step.else, 'else');
       } else if (step.kind === 'loop') {
-        search(step.body, step.id, 'body');
+        searchIfPresent(step.body, 'body');
       } else if (step.kind === 'try') {
-        search(step.body, step.id, 'body');
-
-        if (step.catch) {
-          search(step.catch.body, step.id, 'catch');
-        }
-
-        if (step.finally) {
-          search(step.finally, step.id, 'finally');
-        }
+        searchIfPresent(step.body, 'body');
+        searchIfPresent(step.catch?.body, 'catch');
+        searchIfPresent(step.finally, 'finally');
       }
     });
   };
@@ -260,25 +259,7 @@ export function updateStep(
           return;
         }
 
-        if (step.kind === 'condition') {
-          apply(step.then);
-
-          if (step.else) {
-            apply(step.else);
-          }
-        } else if (step.kind === 'loop') {
-          apply(step.body);
-        } else if (step.kind === 'try') {
-          apply(step.body);
-
-          if (step.catch) {
-            apply(step.catch.body);
-          }
-
-          if (step.finally) {
-            apply(step.finally);
-          }
-        }
+        childSequences(step).forEach(apply);
       });
     };
 

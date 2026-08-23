@@ -303,16 +303,27 @@ export function isScopedStep(step: FlowStep): step is ConditionStep | LoopStep |
   return SCOPED_STEP_KINDS.includes(step.kind);
 }
 
+function isSequence(candidate: unknown): candidate is Sequence {
+  return (
+    candidate != null &&
+    typeof candidate === 'object' &&
+    Array.isArray((candidate as Sequence).steps)
+  );
+}
+
+/**
+ * Flow files can be edited by hand, so a scope may arrive without the body it
+ * is supposed to have. Every walker goes through here, and each one would
+ * otherwise throw on a missing sequence rather than reporting it.
+ */
 export function childSequences(step: FlowStep): Sequence[] {
   switch (step.kind) {
     case 'condition':
-      return step.else ? [step.then, step.else] : [step.then];
+      return [step.then, step.else].filter(isSequence);
     case 'loop':
-      return [step.body];
+      return [step.body].filter(isSequence);
     case 'try':
-      return [step.body, step.catch?.body, step.finally].filter(
-        (sequence): sequence is Sequence => sequence != null,
-      );
+      return [step.body, step.catch?.body, step.finally].filter(isSequence);
     default:
       return [];
   }

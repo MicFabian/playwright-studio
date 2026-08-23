@@ -241,7 +241,10 @@ function readAssertion(call: CallExpression): FlowStep | null {
     return null;
   }
 
-  if (subjectHolder.getExpression().getText() !== 'expect') {
+  const expectCallee = subjectHolder.getExpression().getText();
+
+  // expect.soft(...) and expect.poll(...) assert the same things as expect(...).
+  if (!['expect', 'expect.soft', 'expect.poll'].includes(expectCallee)) {
     return null;
   }
 
@@ -385,6 +388,31 @@ function unwrapAwait(expression: Expression): Expression {
   return Node.isAwaitExpression(expression) ? expression.getExpression() : expression;
 }
 
+function convertExpressionBody(expression: Expression, context: ConversionContext): Sequence {
+  const call = unwrapAwait(expression);
+
+  if (Node.isCallExpression(call)) {
+    const step = readAction(call) ?? readAssertion(call);
+
+    if (step) {
+      context.structured += 1;
+      return { steps: [step] };
+    }
+  }
+
+  context.opaque += 1;
+  context.diagnostics.push({
+    severity: 'warning',
+    code: 'opaque-statement',
+    message: `Kept as custom code: ${expression.getText().slice(0, 80)}`,
+    line: expression.getStartLineNumber(),
+  });
+
+  return {
+    steps: [{ id: nextStepId('code'), kind: 'code', code: `await ${expression.getText()};` }],
+  };
+}
+
 function convertStatements(statements: Statement[], context: ConversionContext): Sequence {
   const steps: FlowStep[] = [];
 
@@ -407,9 +435,11 @@ function convertStatements(statements: Statement[], context: ConversionContext):
 
           if (body && (Node.isArrowFunction(body) || Node.isFunctionExpression(body))) {
             const inner = body.getBody();
+            // `async () => page.goto('/x')` has an expression body rather than a
+            // block, and treating it as empty silently dropped the step.
             const nested = Node.isBlock(inner)
               ? convertStatements(inner.getStatements(), context)
-              : { steps: [] };
+              : convertExpressionBody(inner as Expression, context);
 
             if (nested.steps.length === 1 && label) {
               steps.push({ ...nested.steps[0], label });

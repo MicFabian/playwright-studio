@@ -398,7 +398,13 @@ class Compiler {
 
   private assertion(step: AssertStep): string {
     const locator = this.locator(step.target, step.id);
-    const assertion: AssertionIR = step.assertion;
+    const assertion: AssertionIR | undefined = step.assertion;
+
+    if (!assertion?.type) {
+      this.error('missing-assertion', 'This assert step has no assertion.', step.id);
+      return `expect(${locator}).toBeVisible()`;
+    }
+
     const negated = 'negated' in assertion && assertion.negated ? '.not' : '';
     const subject = `expect(${locator})${negated}`;
     const timeout = this.timeout(step.timeoutMs);
@@ -428,7 +434,13 @@ class Compiler {
   }
 
   private pageAssertion(step: AssertPageStep): string {
-    const assertion: PageAssertionIR = step.assertion;
+    const assertion: PageAssertionIR | undefined = step.assertion;
+
+    if (!assertion?.type) {
+      this.error('missing-assertion', 'This page assertion has nothing to check.', step.id);
+      return 'expect(page).toHaveURL("/")';
+    }
+
     const negated = assertion.negated ? '.not' : '';
     const timeout = this.timeout(step.timeoutMs);
     const args = [this.value(assertion.value, step.id), timeout].filter(Boolean).join(', ');
@@ -438,7 +450,12 @@ class Compiler {
       : `expect(page)${negated}.toHaveTitle(${args})`;
   }
 
-  private predicate(predicate: PredicateIR, stepId: string): string {
+  private predicate(predicate: PredicateIR | undefined, stepId: string): string {
+    if (!predicate?.type) {
+      this.error('missing-predicate', 'This condition has nothing to check.', stepId);
+      return 'false';
+    }
+
     switch (predicate.type) {
       case 'locatorVisible': {
         const call = `await ${this.locator(predicate.target, stepId)}.isVisible()`;
@@ -665,7 +682,7 @@ class Compiler {
       case 'call': {
         const call = step as CallStep;
 
-        if (!call.target.trim()) {
+        if (!call.target?.trim()) {
           this.error('missing-call-target', 'Call step has no target.', step.id);
           return;
         }
@@ -856,6 +873,11 @@ class Compiler {
       case 'condition': {
         const condition = step as ConditionStep;
 
+        if (!Array.isArray(condition.then?.steps)) {
+          this.error('malformed-scope', 'This condition has no "then" branch.', step.id);
+          return;
+        }
+
         if (condition.then.steps.length === 0 && !condition.else?.steps.length) {
           this.error(
             'empty-branch',
@@ -882,6 +904,11 @@ class Compiler {
       case 'loop': {
         const loop = step as LoopStep;
 
+        if (!Array.isArray(loop.body?.steps)) {
+          this.error('malformed-scope', 'This loop has no body.', step.id);
+          return;
+        }
+
         if (!isValidIdentifier(loop.itemName)) {
           this.error('invalid-variable', `"${loop.itemName}" is not a valid item name.`, step.id);
           return;
@@ -904,6 +931,11 @@ class Compiler {
       }
       case 'try': {
         const tryStep = step as TryStep;
+
+        if (!Array.isArray(tryStep.body?.steps)) {
+          this.error('malformed-scope', 'This try step has no body.', step.id);
+          return;
+        }
 
         if (!tryStep.catch && !tryStep.finally) {
           this.error('try-without-handler', 'Try step needs a catch or finally block.', step.id);

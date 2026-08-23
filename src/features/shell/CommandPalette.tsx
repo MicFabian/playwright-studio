@@ -129,7 +129,9 @@ export function CommandPalette({ open, onClose, tests, onOpenTest, actions }: Co
           onKeyDown={(event) => {
             if (event.key === 'ArrowDown') {
               event.preventDefault();
-              setActive((current) => Math.min(current + 1, matches.length - 1));
+              // Math.min against an empty list would settle on -1, which
+              // highlights nothing and never recovers.
+              setActive((current) => Math.max(0, Math.min(current + 1, matches.length - 1)));
             }
 
             if (event.key === 'ArrowUp') {

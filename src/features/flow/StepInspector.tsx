@@ -140,12 +140,16 @@ function Field({
   children: React.ReactNode;
   hint?: string;
 }) {
+  // The hint sits outside the label: inside it, the accessible name of the
+  // control becomes "Match index Leave empty to require a unique match".
   return (
-    <label className="inspector-field">
-      <span className="inspector-field__label">{label}</span>
-      {children}
+    <div className="inspector-field">
+      <label className="inspector-field__labelled">
+        <span className="inspector-field__label">{label}</span>
+        {children}
+      </label>
       {hint ? <span className="inspector-field__hint">{hint}</span> : null}
-    </label>
+    </div>
   );
 }
 
@@ -260,12 +264,18 @@ function LocatorEditor({
         <input
           type="number"
           value={target.nth ?? ''}
-          onChange={(event) =>
+          min={0}
+          step={1}
+          onChange={(event) => {
+            const parsed = Number.parseInt(event.target.value, 10);
+
             onChange({
               ...target,
-              nth: event.target.value === '' ? undefined : Number(event.target.value),
-            })
-          }
+              // Playwright needs a non-negative integer here; anything else
+              // would compile to a locator call that throws at run time.
+              nth: Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined,
+            });
+          }}
         />
       </Field>
     </>
@@ -389,13 +399,24 @@ export function StepInspector({ snippets = [] }: { snippets?: SnippetItem[] }) {
               value={step.assertion.type}
               onChange={(event) => {
                 const type = event.target.value as AssertionIR['type'];
+                const current = step.assertion;
+
+                // Carry the text or value across so switching type and back
+                // does not silently discard what the user typed.
+                const carried =
+                  'text' in current
+                    ? current.text
+                    : 'value' in current
+                      ? current.value
+                      : { source: 'literal' as const, value: '' };
+
                 const assertion: AssertionIR =
                   type === 'containsText' || type === 'hasText'
-                    ? { type, text: { source: 'literal', value: '' } }
+                    ? { type, text: carried }
                     : type === 'hasValue'
-                      ? { type, value: { source: 'literal', value: '' } }
+                      ? { type, value: carried }
                       : type === 'hasCount'
-                        ? { type, count: 1 }
+                        ? { type, count: 'count' in current ? current.count : 1 }
                         : { type };
 
                 update({ assertion } as Partial<FlowStep>);

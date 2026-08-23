@@ -104,24 +104,23 @@ export function projectFlowToCanvas(document: FlowDocument): CanvasProjection {
 
       previousId = step.id;
 
+      // A hand-edited file may omit a scope body entirely; the compiler reports
+      // that, and the canvas simply shows the scope with nothing inside it.
+      const visitIfPresent = (sequence: Sequence | undefined, slot: ScopeSlot) => {
+        if (sequence && Array.isArray(sequence.steps)) {
+          visit(sequence, step.id, slot, depth + 1);
+        }
+      };
+
       if (step.kind === 'condition') {
-        visit(step.then, step.id, 'then', depth + 1);
-
-        if (step.else) {
-          visit(step.else, step.id, 'else', depth + 1);
-        }
+        visitIfPresent(step.then, 'then');
+        visitIfPresent(step.else, 'else');
       } else if (step.kind === 'loop') {
-        visit(step.body, step.id, 'body', depth + 1);
+        visitIfPresent(step.body, 'body');
       } else if (step.kind === 'try') {
-        visit(step.body, step.id, 'body', depth + 1);
-
-        if (step.catch) {
-          visit(step.catch.body, step.id, 'catch', depth + 1);
-        }
-
-        if (step.finally) {
-          visit(step.finally, step.id, 'finally', depth + 1);
-        }
+        visitIfPresent(step.body, 'body');
+        visitIfPresent(step.catch?.body, 'catch');
+        visitIfPresent(step.finally, 'finally');
       }
     });
   };

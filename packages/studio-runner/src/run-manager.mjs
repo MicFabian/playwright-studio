@@ -219,7 +219,6 @@ export class RunManager extends EventEmitter {
 
     if (state) {
       state.seq = record.seq;
-      state.events.push(record);
     }
 
     await fs.appendFile(
@@ -351,7 +350,7 @@ export class RunManager extends EventEmitter {
     }
 
     this.pendingAdmissions += 1;
-    this.active.set(runId, { seq: 0, events: [], manifest });
+    this.active.set(runId, { seq: 0, manifest });
 
     try {
       await this.appendEvent(runId, { type: 'run:queued', runId, testId, at: Date.now() });

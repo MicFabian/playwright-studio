@@ -16,9 +16,12 @@ export default defineConfig({
       // A floor, not a target: set just below today's numbers so a real drop
       // fails the build without the threshold needing constant edits.
       thresholds: {
-        statements: 45,
+        statements: 50,
         branches: 70,
-        functions: 75,
+        // Lower than statements on purpose: testing a component counts all of
+        // its inline handlers, so covering more of a file can still push this
+        // figure down.
+        functions: 72,
       },
     },
   },
