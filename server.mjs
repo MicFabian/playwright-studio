@@ -20,6 +20,7 @@ import {
   migrateV1Flow,
 } from './packages/flow-core/dist/index.mjs';
 import { RunManager } from './packages/studio-runner/src/run-manager.mjs';
+import { RecordingManager } from './packages/studio-recorder/src/recording-manager.mjs';
 import { importSpecSource, readPlaywrightConfig } from './packages/flow-import/dist/index.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -63,6 +64,20 @@ const contentTypes = {
 };
 
 const runsRootRelative = path.join('playwright-lowcode', 'runs').replaceAll('\\', '/');
+
+const recordingManager = new RecordingManager({
+  rootDir: installRoot,
+  workspaceDir: rootDir,
+  scratchDir: path.join(rootDir, '.studio-recordings'),
+  importSource: (source, fileName) => importSpecSource(source, fileName),
+  resolveRunnable: (relative) =>
+    path.join(
+      installRoot.includes('app.asar')
+        ? installRoot.replace('app.asar', 'app.asar.unpacked')
+        : installRoot,
+      relative,
+    ),
+});
 
 const runManager = new RunManager({
   rootDir: installRoot,
@@ -975,6 +990,115 @@ async function handleApi(request, response) {
       return;
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/recordings') {
+      const body = await parseBody(request);
+
+      // Strict allowlist: the recorder must never take a command, a path, or
+      // anything resembling source from the client.
+      const allowed = new Set(['testId', 'startUrl']);
+      const unexpected = Object.keys(body ?? {}).filter((key) => !allowed.has(key));
+
+      if (unexpected.length > 0) {
+        throw createHttpError(400, `A recording does not accept: ${unexpected.join(', ')}.`);
+      }
+
+      const tests = await loadTests(project);
+      const selected = tests.find((test) => test.id === slugify(body?.testId || ''));
+
+      if (!selected) {
+        throw createHttpError(404, 'Record into a saved flow.');
+      }
+
+      const playwrightConfig = await discoverPlaywrightConfig(project);
+
+      const recording = await recordingManager.start({
+        flowId: selected.id,
+        startUrl: String(body?.startUrl || playwrightConfig.baseURL || 'about:blank'),
+        testIdAttribute: playwrightConfig.testIdAttribute || 'data-testid',
+      });
+
+      sendJson(response, 201, { recording });
+      return;
+    }
+
+    const recordingMatch = url.pathname.match(/^\/api\/recordings\/([^/]+)$/);
+    const recordingStopMatch = url.pathname.match(/^\/api\/recordings\/([^/]+)\/stop$/);
+    const recordingAcceptMatch = url.pathname.match(/^\/api\/recordings\/([^/]+)\/accept$/);
+    const recordingEventsMatch = url.pathname.match(/^\/api\/recordings\/([^/]+)\/events$/);
+
+    if (request.method === 'GET' && recordingMatch) {
+      const recording = recordingManager.describe();
+
+      if (!recording || recording.id !== normalizeRunId(recordingMatch[1])) {
+        throw createHttpError(404, 'That recording is no longer active.');
+      }
+
+      sendJson(response, 200, { recording });
+      return;
+    }
+
+    if (request.method === 'GET' && recordingEventsMatch) {
+      const recordingId = normalizeRunId(recordingEventsMatch[1]);
+
+      response.statusCode = 200;
+      response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      response.setHeader('Cache-Control', 'no-cache');
+      response.setHeader('Connection', 'keep-alive');
+      response.flushHeaders?.();
+
+      const current = recordingManager.describe();
+
+      if (current?.id === recordingId) {
+        response.write(`data: ${JSON.stringify({ type: 'recording:snapshot', ...current })}\n\n`);
+      }
+
+      const onEvent = (event) => {
+        if (event.id === recordingId) {
+          response.write(`data: ${JSON.stringify(event)}\n\n`);
+        }
+      };
+
+      recordingManager.on('recording', onEvent);
+
+      const heartbeat = setInterval(() => response.write(': ping\n\n'), 15000);
+
+      request.on('close', () => {
+        clearInterval(heartbeat);
+        recordingManager.off('recording', onEvent);
+      });
+
+      return;
+    }
+
+    if (request.method === 'POST' && recordingStopMatch) {
+      const recording = await recordingManager.stop(normalizeRunId(recordingStopMatch[1]));
+      sendJson(response, 200, { recording });
+      return;
+    }
+
+    if (request.method === 'POST' && recordingAcceptMatch) {
+      const recordingId = normalizeRunId(recordingAcceptMatch[1]);
+      const current = recordingManager.describe();
+
+      if (!current || current.id !== recordingId) {
+        throw createHttpError(404, 'That recording is no longer available.');
+      }
+
+      if (current.status !== 'review') {
+        throw createHttpError(409, 'Stop the recording before adding its steps.');
+      }
+
+      const steps = await recordingManager.accept(recordingId);
+      sendJson(response, 200, { steps: steps ?? [] });
+      return;
+    }
+
+    if (request.method === 'DELETE' && recordingMatch) {
+      await recordingManager.discard(normalizeRunId(recordingMatch[1]));
+      sendJson(response, 200, { discarded: true });
+      return;
+    }
+
     if (request.method === 'POST' && url.pathname === '/api/tests') {
       const body = await parseBody(request);
       const test = await createTest(project, body.name);
@@ -1198,6 +1322,7 @@ export async function startStudio() {
 }
 
 export async function stopStudio() {
+  await recordingManager.shutdown().catch(() => undefined);
   await runManager.shutdown().catch(() => undefined);
 }
 

@@ -5,6 +5,7 @@
 .npm-cache/
 .playwright-cli/
 .playwright-mcp/
+.studio-recordings/
 .studio-runs/
 .windsurf/
 coverage/

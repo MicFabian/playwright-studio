@@ -168,6 +168,13 @@ function readLocatorChain(expression: Expression): LocatorChain | null {
 
   const root = receiver.getText();
 
+  // Only page-level locators can be represented. A chain rooted in a variable
+  // or another locator carries scoping the IR cannot express, and rewriting it
+  // as `page.…` would silently target a different element.
+  if (root !== 'page') {
+    return null;
+  }
+
   if (method === 'getByRole') {
     const role = literalText(args[0]);
 

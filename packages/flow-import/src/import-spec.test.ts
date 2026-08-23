@@ -244,6 +244,39 @@ describe('escape hatch', () => {
   });
 });
 
+describe('locator scoping', () => {
+  it('does not retarget a locator scoped to another locator', () => {
+    const { document, opaqueSteps } = importOne(`
+      import { test } from '@playwright/test';
+
+      test('t', async ({ page }) => {
+        const dialog = page.getByRole('dialog');
+        await dialog.getByRole('button', { name: 'Save' }).click();
+      });
+    `);
+
+    // Rewriting this as page.getByRole('button') would click a different
+    // element, so the scoping must be preserved verbatim instead.
+    const step = document.root.steps.at(-1)!;
+
+    expect(step.kind).toBe('code');
+    expect(step.kind === 'code' && step.code).toContain('dialog.');
+    expect(opaqueSteps).toBeGreaterThan(0);
+  });
+
+  it('still maps a locator rooted in page', () => {
+    const { document } = importOne(`
+      import { test } from '@playwright/test';
+
+      test('t', async ({ page }) => {
+        await page.getByTestId('ok').click();
+      });
+    `);
+
+    expect(document.root.steps[0]).toMatchObject({ kind: 'click' });
+  });
+});
+
 describe('shapes that used to be dropped', () => {
   it('keeps a test.step whose body is a single expression', () => {
     const { document, fidelity } = importOne(`
