@@ -32,10 +32,10 @@ async function openStudio(page: Page, baseURL: string) {
 }
 
 test.beforeEach(async ({ page, baseURL }) => {
-  await openStudio(page, baseURL!);
+  // Reset before the first load: resetting afterwards would need a second page
+  // load in every test just to see the restored workspace.
   await page.request.post(`${baseURL}/api/test-reset`);
-  await page.reload();
-  await expect(page.locator('.studio')).toBeVisible();
+  await openStudio(page, baseURL!);
   await expect(canvasNodes(page).first()).toBeVisible();
   await expect(library(page).getByRole('button', { name: 'Condition', exact: true })).toBeEnabled();
 });
