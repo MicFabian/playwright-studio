@@ -12,6 +12,57 @@ function manager(rootDir: string, overrides = {}) {
   });
 }
 
+describe('the run queue', () => {
+  it('drains every queued run and never leaves the counter stuck', async () => {
+    const runner = manager('/app', { maxConcurrentRuns: 2 });
+    const rejections: unknown[] = [];
+    const onRejection = (error: unknown) => rejections.push(error);
+
+    process.on('unhandledRejection', onRejection);
+
+    let calls = 0;
+    runner.execute = async () => {
+      calls += 1;
+      throw new Error('boom');
+    };
+    runner.writeManifest = async () => undefined;
+    runner.readManifest = async () => null;
+
+    for (let index = 0; index < 5; index += 1) {
+      runner.queue.push({ runId: `r${index}`, configPath: '/tmp/x', manifest: {} });
+    }
+
+    runner.drainQueue();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    process.off('unhandledRejection', onRejection);
+
+    expect(calls).toBe(5);
+    expect(runner.running).toBe(0);
+    expect(runner.queue).toHaveLength(0);
+    expect(rejections).toHaveLength(0);
+  });
+
+  it('records a terminal status when a run fails to start', async () => {
+    const runner = manager('/app');
+    const written: { status?: string; error?: string }[] = [];
+
+    runner.execute = async () => {
+      throw new Error('could not spawn');
+    };
+    runner.readManifest = async () => ({ id: 'r1', status: 'running' });
+    runner.writeManifest = async (manifest: { status?: string; error?: string }) => {
+      written.push(manifest);
+    };
+
+    runner.queue.push({ runId: 'r1', configPath: '/tmp/x', manifest: {} });
+    runner.drainQueue();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(written.at(-1)?.status).toBe('failed');
+    expect(written.at(-1)?.error).toContain('could not spawn');
+  });
+});
+
 describe('resolving files a spawned process must read', () => {
   it('uses the install directory when running from source', () => {
     const runner = manager('/app');

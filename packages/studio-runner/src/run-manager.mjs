@@ -364,10 +364,25 @@ export class RunManager extends EventEmitter {
       const next = this.queue.shift();
       this.running += 1;
 
-      void this.execute(next.runId, next.configPath, next.manifest).finally(() => {
-        this.running -= 1;
-        this.drainQueue();
-      });
+      void this.execute(next.runId, next.configPath, next.manifest)
+        .catch(async (error) => {
+          // An execute that fails outright must still leave a terminal manifest,
+          // or the run is stuck reporting "running" forever.
+          const manifest = (await this.readManifest(next.runId)) ?? next.manifest;
+
+          await this.writeManifest({
+            ...manifest,
+            status: 'failed',
+            finishedAt: new Date().toISOString(),
+            error: error instanceof Error ? error.message : String(error),
+          }).catch(() => undefined);
+
+          this.emit('event', next.runId, { type: 'run:finished', status: 'failed', seq: -1 });
+        })
+        .finally(() => {
+          this.running -= 1;
+          this.drainQueue();
+        });
     }
   }
 
