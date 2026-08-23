@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     include: ['packages/**/*.test.ts', 'src/**/*.test.{ts,tsx}', 'server/**/*.test.ts'],
     environmentMatchGlobs: [['src/**', 'jsdom']],
+    setupFiles: ['src/test-setup.ts'],
     environment: 'node',
     coverage: {
       provider: 'v8',
