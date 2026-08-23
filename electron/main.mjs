@@ -187,12 +187,36 @@ async function switchWorkspace() {
     return;
   }
 
-  await dialog.showMessageBox({
-    type: 'info',
-    message: 'Studio will restart to open that folder.',
-    buttons: ['Restart'],
-  });
+  const unsaved = await mainWindow?.webContents
+    .executeJavaScript('Boolean(window.__studioHasUnsavedWork?.())')
+    .catch(() => false);
 
+  if (unsaved) {
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      message: 'This flow has unsaved changes.',
+      detail: 'Save them before opening the other folder?',
+      buttons: ['Save and open', 'Discard and open', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+    });
+
+    if (response === 2) {
+      return;
+    }
+
+    if (response === 0) {
+      await mainWindow?.webContents
+        .executeJavaScript('window.__studioSaveNow?.()')
+        .catch(() => undefined);
+    }
+  }
+
+  // The relaunched process inherits this environment, and it takes priority
+  // over the stored setting, so it must point at the new folder.
+  process.env.STUDIO_WORKSPACE_ROOT = chosen;
+
+  await shutdown();
   app.relaunch();
   app.exit(0);
 }

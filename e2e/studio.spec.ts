@@ -131,6 +131,20 @@ test('edits are saved without pressing save', async ({ page }) => {
     .toBeGreaterThan(0);
 });
 
+test('switching flows keeps an edit that has not autosaved yet', async ({ page }) => {
+  const before = await stepCount(page);
+
+  await library(page).getByRole('button', { name: 'Hover', exact: true }).click();
+  await expect.poll(() => stepCount(page)).toBe(before + 1);
+
+  // Switch away immediately, well inside the autosave debounce.
+  await page.locator('.explorer__list button').nth(1).click();
+  await expect.poll(() => stepCount(page)).not.toBe(before + 1);
+
+  await page.locator('.explorer__list button').first().click();
+  await expect.poll(() => stepCount(page)).toBe(before + 1);
+});
+
 test('renaming a flow renames its files', async ({ page }) => {
   const name = page.locator('.topbar__name');
 

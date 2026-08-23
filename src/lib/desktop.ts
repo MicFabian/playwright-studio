@@ -12,6 +12,8 @@ interface StudioDesktop {
 declare global {
   interface Window {
     studioDesktop?: StudioDesktop;
+    __studioHasUnsavedWork?: () => boolean;
+    __studioSaveNow?: () => Promise<boolean>;
   }
 }
 

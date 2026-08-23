@@ -4,7 +4,6 @@ import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { createServer as createViteServer } from 'vite';
 import {
   authenticate,
   createSecurityContext,
@@ -124,10 +123,22 @@ async function readJson(filePath) {
   return JSON.parse(raw);
 }
 
+let atomicWriteCounter = 0;
+
 async function writeFileAtomic(filePath, contents) {
-  const temporaryPath = `${filePath}.tmp-${process.pid}`;
-  await fs.writeFile(temporaryPath, contents);
-  await fs.rename(temporaryPath, filePath);
+  atomicWriteCounter += 1;
+
+  // Unique per write: two concurrent saves of the same flow would otherwise
+  // share a temp path, and one rename would fail with ENOENT.
+  const temporaryPath = `${filePath}.tmp-${process.pid}-${atomicWriteCounter}`;
+
+  try {
+    await fs.writeFile(temporaryPath, contents);
+    await fs.rename(temporaryPath, filePath);
+  } catch (error) {
+    await fs.rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 async function ensureWorkspaceLayout(project) {
@@ -449,6 +460,7 @@ async function persistTest(project, payload, fallbackId) {
     root: payload.document?.root ?? payload.root ?? { steps: [] },
     layout: payload.document?.layout ?? payload.layout ?? { positions: {} },
     ...(payload.document?.testOptions ? { testOptions: payload.document.testOptions } : {}),
+    ...(payload.document?.data ? { data: payload.document.data } : {}),
   };
 
   const playwrightConfig = await discoverPlaywrightConfig(project);
@@ -880,9 +892,18 @@ async function handleApi(request, response) {
         throw createHttpError(400, 'Select at least one imported test to adopt.');
       }
 
+      const existing = new Set((await loadTests(project)).map((test) => test.id));
       const created = [];
 
       for (const document of documents) {
+        if (existing.has(slugify(document.id))) {
+          throw createHttpError(
+            409,
+            `A flow named "${document.name}" already exists. Rename it before importing.`,
+          );
+        }
+
+        existing.add(slugify(document.id));
         created.push(
           await persistTest(
             project,
@@ -1046,6 +1067,7 @@ async function start() {
     return { server, url: launchUrl(securityContext, host, boundPort), port: boundPort, host };
   }
 
+  const { createServer: createViteServer } = await import('vite');
   const vite = await createViteServer({
     server: {
       middlewareMode: true,

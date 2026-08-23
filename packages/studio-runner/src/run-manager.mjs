@@ -550,6 +550,26 @@ export class RunManager extends EventEmitter {
   async cancel(runId) {
     const state = this.active.get(runId);
 
+    // A run still in the queue has no child to signal, so cancelling it means
+    // removing it before it ever starts.
+    const queuedIndex = this.queue.findIndex((entry) => entry.runId === runId);
+
+    if (queuedIndex >= 0) {
+      const [entry] = this.queue.splice(queuedIndex, 1);
+
+      await fs.rm(entry.configPath, { force: true }).catch(() => undefined);
+      await this.writeManifest({
+        ...((await this.readManifest(runId)) ?? entry.manifest),
+        status: 'cancelled',
+        finishedAt: new Date().toISOString(),
+      }).catch(() => undefined);
+
+      await this.appendEvent(runId, { type: 'run:finished', status: 'cancelled', at: Date.now() });
+      this.active.delete(runId);
+
+      return true;
+    }
+
     if (!state?.child) {
       return false;
     }

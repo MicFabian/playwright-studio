@@ -517,6 +517,58 @@ describe('conditional assignment is surfaced', () => {
   });
 });
 
+describe('names that collide with a binding the generated code owns', () => {
+  it('rejects a variable whose name matches a loop item in a sibling scope', () => {
+    const codes = compile([
+      {
+        id: 'loop',
+        kind: 'loop',
+        source: { source: 'literal', value: 'rows' },
+        itemName: 'row',
+        body: { steps: [{ id: 'c', kind: 'click', target: testId('x') }] },
+      },
+      { id: 'ex', kind: 'extract', target: testId('y'), variable: 'row' },
+    ]).diagnostics.map((diagnostic) => diagnostic.code);
+
+    expect(codes).toContain('name-collides-with-binding');
+  });
+
+  it('rejects a variable whose name matches a data column', () => {
+    const codes = compile([{ id: 'ex', kind: 'extract', target: testId('y'), variable: 'email' }], {
+      data: {
+        columns: [{ name: 'email' }],
+        cases: [{ name: 'row', values: { email: 'qa@example.com' } }],
+      },
+    }).diagnostics.map((diagnostic) => diagnostic.code);
+
+    expect(codes).toContain('name-collides-with-binding');
+  });
+
+  it('rejects a variable whose name matches a catch clause', () => {
+    const codes = compile([
+      {
+        id: 'try',
+        kind: 'try',
+        body: { steps: [{ id: 'c', kind: 'click', target: testId('x') }] },
+        catch: { errorName: 'failure', body: { steps: [] } },
+      },
+      { id: 'ex', kind: 'extract', target: testId('y'), variable: 'failure' },
+    ]).diagnostics.map((diagnostic) => diagnostic.code);
+
+    expect(codes).toContain('name-collides-with-binding');
+  });
+
+  it('leaves a flow with no collision alone', () => {
+    const result = compile([
+      { id: 'ex', kind: 'extract', target: testId('y'), variable: 'seen' },
+      { id: 'use', kind: 'fill', target: testId('z'), value: { source: 'variable', name: 'seen' } },
+    ]);
+
+    expect(hasBlockingDiagnostics(result)).toBe(false);
+    expect(result.source).toContain('let seen;');
+  });
+});
+
 describe('declaration hygiene', () => {
   it('declares a reused variable once rather than emitting invalid duplicate lets', () => {
     const { source } = compile([

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { FlowCanvas } from './features/flow/FlowCanvas';
@@ -85,27 +85,38 @@ export default function App() {
     [workspace, activeTestId],
   );
 
+  const handleSaveRef = useRef<(() => Promise<boolean>) | null>(null);
+
   const handleSelectTest = useCallback(
-    (testId: string) => {
+    async (testId: string) => {
       const test = workspace?.tests.find((candidate) => candidate.id === testId);
 
-      if (test) {
-        setActiveTestId(test.id);
-        load(test.document);
-        useRunStore.getState().reset();
+      if (!test || test.id === activeTestId) {
+        return;
       }
+
+      // Switching away must not drop edits the autosave debounce has not
+      // flushed yet, so write them before loading the other flow.
+      if (useEditorStore.getState().dirty) {
+        await handleSaveRef.current?.();
+      }
+
+      setActiveTestId(test.id);
+      load(test.document);
+      useRunStore.getState().reset();
     },
-    [workspace, load],
+    [workspace, activeTestId, load],
   );
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (): Promise<boolean> => {
     const current = useEditorStore.getState().document;
 
     if (!current || !activeTest) {
-      return;
+      return true;
     }
 
     setSaveState('saving');
+    let saved = false;
 
     try {
       const { test } = await saveTest({
@@ -122,6 +133,7 @@ export default function App() {
       }
 
       setSaveState('saved');
+      saved = true;
       setWorkspace((previous) =>
         previous
           ? {
@@ -136,7 +148,11 @@ export default function App() {
       setSaveState('error');
       setLoadError(error instanceof Error ? error.message : 'Save failed.');
     }
+
+    return saved;
   }, [activeTest, markSaved]);
+
+  handleSaveRef.current = handleSave;
 
   const handleRename = useCallback(
     async (name: string) => {
@@ -145,6 +161,14 @@ export default function App() {
       }
 
       try {
+        if (useEditorStore.getState().dirty) {
+          const saved = await handleSaveRef.current?.();
+
+          if (saved === false) {
+            return;
+          }
+        }
+
         const { test } = await renameTest(activeTest.id, name.trim());
         setActiveTestId(test.id);
         await hydrate(test.id);
@@ -170,7 +194,11 @@ export default function App() {
       }
 
       setPanel('run');
-      await handleSave();
+
+      if ((await handleSave()) === false) {
+        return;
+      }
+
       await useRunStore
         .getState()
         .start({ testId: activeTest.id, testName: current.name, liveMode });
@@ -191,6 +219,18 @@ export default function App() {
 
     return () => window.clearTimeout(timer);
   }, [dirty, document, activeTest, handleSave]);
+
+  useEffect(() => {
+    // The desktop shell asks about unsaved work before relaunching, which
+    // bypasses beforeunload entirely.
+    window.__studioHasUnsavedWork = () => useEditorStore.getState().dirty;
+    window.__studioSaveNow = () => handleSaveRef.current?.() ?? Promise.resolve(true);
+
+    return () => {
+      delete window.__studioHasUnsavedWork;
+      delete window.__studioSaveNow;
+    };
+  }, []);
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -320,7 +360,7 @@ export default function App() {
         <WorkspaceExplorer
           workspace={workspace}
           activeTestId={activeTestId}
-          onSelect={handleSelectTest}
+          onSelect={(testId) => void handleSelectTest(testId)}
           onCreate={handleCreateTest}
           onImport={() => setImporting(true)}
           activeSnippetId={activeSnippetId}
@@ -408,7 +448,7 @@ export default function App() {
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
         tests={workspace?.tests ?? []}
-        onOpenTest={handleSelectTest}
+        onOpenTest={(testId) => void handleSelectTest(testId)}
         actions={[
           { label: 'Save flow', hint: 'Ctrl/Cmd S', run: () => void handleSave() },
           { label: 'Run flow', hint: 'Ctrl/Cmd Enter', run: () => void handleRun(false) },

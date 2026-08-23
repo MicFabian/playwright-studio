@@ -992,6 +992,23 @@ class Compiler {
     const bound = new Set<string>();
     this.boundInSequence(this.document.root, bound);
 
+    if (this.document.data && this.document.data.cases.length > 0) {
+      this.document.data.columns.forEach((column) => bound.add(column.name));
+    }
+
+    // A name that a loop item, catch clause, snippet, or data column already
+    // binds cannot also be declared here: assigning to it would either hit an
+    // undeclared variable or overwrite a const the generated code owns.
+    [...published]
+      .filter((name) => bound.has(name))
+      .forEach((name) =>
+        this.error(
+          'name-collides-with-binding',
+          `"${name}" is already bound by a loop, catch, snippet, or data column in this flow. ` +
+            'Rename one of them.',
+        ),
+      );
+
     const declarations = [...published].filter(
       (name) =>
         !bound.has(name) && !this.hoistedNames.has(name) && !this.declaredVariables.has(name),
