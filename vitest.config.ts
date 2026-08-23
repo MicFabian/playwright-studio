@@ -13,6 +13,13 @@ export default defineConfig({
       include: ['packages/*/src/**/*.ts', 'src/**/*.{ts,tsx}', 'server/**/*.mjs', 'server.mjs'],
       exclude: ['**/*.test.{ts,tsx}', 'src/main.tsx', 'src/lib/flowCore.ts'],
       reporter: ['text-summary', 'json-summary'],
+      // A floor, not a target: set just below today's numbers so a real drop
+      // fails the build without the threshold needing constant edits.
+      thresholds: {
+        statements: 45,
+        branches: 70,
+        functions: 75,
+      },
     },
   },
 });
