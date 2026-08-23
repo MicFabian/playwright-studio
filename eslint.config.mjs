@@ -62,10 +62,16 @@ export default tseslint.config(
     },
   },
   {
-    files: ['electron/preload.cjs'],
+    files: ['**/*.cjs'],
     languageOptions: {
       sourceType: 'commonjs',
-      globals: { require: 'readonly', module: 'readonly', process: 'readonly' },
+      globals: {
+        require: 'readonly',
+        module: 'readonly',
+        process: 'readonly',
+        console: 'readonly',
+        __dirname: 'readonly',
+      },
     },
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },

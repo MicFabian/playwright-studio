@@ -171,7 +171,7 @@ export default function App() {
     } finally {
       release();
     }
-  }, [activeTest, markSaved]);
+  }, [performSave]);
 
   handleSaveRef.current = handleSave;
 
