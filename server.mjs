@@ -126,6 +126,7 @@ async function readJson(filePath) {
 let atomicWriteCounter = 0;
 
 async function writeFileAtomic(filePath, contents) {
+  invalidateGitStatus();
   atomicWriteCounter += 1;
 
   // Unique per write: two concurrent saves of the same flow would otherwise
@@ -313,7 +314,59 @@ async function runGit(args) {
   return execFileAsync('git', args, { cwd: rootDir });
 }
 
+// Three git subprocesses cost roughly 40ms, which dominates every request that
+// reports status. Autosave makes that frequent, so the result is cached briefly
+// and dropped whenever the workspace is written to.
+const GIT_STATUS_TTL_MS = 1500;
+let gitStatusCache = { at: 0, value: null, pending: null };
+let lastKnownGitStatus = null;
+
+function invalidateGitStatus() {
+  gitStatusCache = { at: 0, value: null, pending: null };
+}
+
+// Saving should not wait on git. The status is refreshed in the background and
+// the caller gets whatever is already known, which the UI only uses to show
+// how many files changed.
+function getGitStatusEventually() {
+  if (!lastKnownGitStatus) {
+    return getGitStatus();
+  }
+
+  // A write has just invalidated the cache, so this value is one save behind.
+  // The UI uses it for a changed-file count, and the refresh already running
+  // will correct it well before anyone reads it.
+  void getGitStatus().catch(() => undefined);
+  return lastKnownGitStatus;
+}
+
 async function getGitStatus() {
+  const now = Date.now();
+
+  if (gitStatusCache.value && now - gitStatusCache.at < GIT_STATUS_TTL_MS) {
+    return gitStatusCache.value;
+  }
+
+  if (gitStatusCache.pending) {
+    return gitStatusCache.pending;
+  }
+
+  const pending = readGitStatus()
+    .then((value) => {
+      gitStatusCache = { at: Date.now(), value, pending: null };
+      lastKnownGitStatus = value;
+      return value;
+    })
+    .catch((error) => {
+      gitStatusCache = { at: 0, value: null, pending: null };
+      throw error;
+    });
+
+  gitStatusCache.pending = pending;
+  return pending;
+}
+
+async function readGitStatus() {
   try {
     const [{ stdout: root }, { stdout: statusOutput }] = await Promise.all([
       runGit(['rev-parse', '--show-toplevel']),
@@ -944,6 +997,7 @@ async function handleApi(request, response) {
 
     if (request.method === 'POST' && url.pathname === '/api/git/init') {
       await initGitRepo();
+      invalidateGitStatus();
       sendJson(response, 200, {
         git: await getGitStatus(),
       });
@@ -952,6 +1006,7 @@ async function handleApi(request, response) {
 
     if (request.method === 'POST' && url.pathname === '/api/git/stage') {
       await stageGitWorkspace(project);
+      invalidateGitStatus();
       sendJson(response, 200, {
         git: await getGitStatus(),
       });
@@ -961,6 +1016,7 @@ async function handleApi(request, response) {
     if (request.method === 'POST' && url.pathname === '/api/git/commit') {
       const body = await parseBody(request);
       await commitGitWorkspace(body.message);
+      invalidateGitStatus();
       sendJson(response, 200, {
         git: await getGitStatus(),
       });
@@ -978,7 +1034,7 @@ async function handleApi(request, response) {
 
       sendJson(response, 200, {
         test,
-        git: await getGitStatus(),
+        git: await getGitStatusEventually(),
       });
       return;
     }
