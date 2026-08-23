@@ -33,6 +33,10 @@ export interface CanvasProjection {
 
 const HORIZONTAL_STEP = 280;
 const VERTICAL_STEP = 150;
+// Without a wrap, a few hundred steps stretch tens of thousands of pixels wide
+// and fitting them on screen makes every step unreadable.
+const STEPS_PER_ROW = 8;
+const ROW_HEIGHT = 320;
 const SLOT_LABELS: Record<ScopeSlot, string> = {
   then: 'then',
   else: 'else',
@@ -58,8 +62,8 @@ export function projectFlowToCanvas(document: FlowDocument): CanvasProjection {
       const definition = blockRegistry[step.kind];
       const stored = document.layout.positions[step.id];
       const position = stored ?? {
-        x: cursor * HORIZONTAL_STEP,
-        y: depth * VERTICAL_STEP,
+        x: (cursor % STEPS_PER_ROW) * HORIZONTAL_STEP,
+        y: Math.floor(cursor / STEPS_PER_ROW) * ROW_HEIGHT + depth * VERTICAL_STEP,
       };
 
       cursor += 1;

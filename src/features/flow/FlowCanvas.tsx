@@ -25,13 +25,14 @@ export function FlowCanvas() {
     [document],
   );
 
+  // Selection is applied separately below: folding it in here would rebuild
+  // every node object whenever the selection changes.
   const nodes: Node<StepNodeData>[] = useMemo(
     () =>
       projection.nodes.map((canvasNode: CanvasNode) => ({
         id: canvasNode.id,
         type: 'step',
         position: canvasNode.position,
-        selected: canvasNode.id === selectedStepId,
         data: {
           title: canvasNode.title,
           subtitle: canvasNode.subtitle,
@@ -44,7 +45,17 @@ export function FlowCanvas() {
           step: canvasNode.step,
         },
       })),
-    [projection.nodes, selectedStepId],
+    [projection.nodes],
+  );
+
+  const selectedNodes: Node<StepNodeData>[] = useMemo(
+    () =>
+      nodes.map((node) =>
+        node.selected === (node.id === selectedStepId)
+          ? node
+          : { ...node, selected: node.id === selectedStepId },
+      ),
+    [nodes, selectedStepId],
   );
 
   const edges: Edge[] = useMemo(
@@ -82,13 +93,16 @@ export function FlowCanvas() {
 
   return (
     <ReactFlow
-      nodes={nodes}
+      nodes={selectedNodes}
       edges={edges}
       nodeTypes={nodeTypes}
       onNodesChange={handleNodesChange}
       onNodeClick={(_, node) => select(node.id)}
       onPaneClick={() => select(null)}
       fitView
+      // Without a floor, a long flow zooms out until the steps are unreadable
+      // and the first one sits far outside the viewport.
+      fitViewOptions={{ minZoom: 0.45, maxZoom: 1.2, padding: 0.15 }}
       proOptions={{ hideAttribution: true }}
       nodesConnectable={false}
       minZoom={0.2}
