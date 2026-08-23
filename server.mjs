@@ -32,6 +32,9 @@ const port = Number(process.env.PORT || (isProd ? 4173 : 5173));
 const host = allowNetworkListen ? process.env.HOST || '0.0.0.0' : '127.0.0.1';
 const securityContext = createSecurityContext({ allowNetworkListen });
 let activePort = port;
+// Test-only endpoints. Refused outright in a packaged build so setting the
+// environment variable cannot turn them on for a shipped app.
+const testHooksEnabled = process.env.STUDIO_E2E === '1' && process.env.STUDIO_PACKAGED !== '1';
 
 const defaultProject = {
   formatVersion: 2,
@@ -66,6 +69,7 @@ const runManager = new RunManager({
   rootDir: installRoot,
   workspaceDir: rootDir,
   runsDir: path.join(rootDir, runsRootRelative),
+  ...(process.env.STUDIO_SCRATCH_DIR ? { scratchDir: process.env.STUDIO_SCRATCH_DIR } : {}),
   compile: compileFlow,
   resolveCompileOptions: async () => {
     const project = await readProject();
@@ -679,11 +683,7 @@ async function handleApi(request, response) {
       return;
     }
 
-    if (
-      request.method === 'GET' &&
-      url.pathname === '/api/launch-token' &&
-      process.env.STUDIO_E2E === '1'
-    ) {
+    if (request.method === 'GET' && url.pathname === '/api/launch-token' && testHooksEnabled) {
       sendJson(response, 200, { token: securityContext.launchToken });
       return;
     }
@@ -691,7 +691,7 @@ async function handleApi(request, response) {
     if (
       request.method === 'POST' &&
       url.pathname === '/api/test-reset' &&
-      process.env.STUDIO_E2E === '1' &&
+      testHooksEnabled &&
       process.env.STUDIO_SEED_ROOT
     ) {
       const seedTests = path.join(process.env.STUDIO_SEED_ROOT, 'playwright-lowcode', 'tests');
@@ -1032,8 +1032,12 @@ async function start() {
       }
     });
 
-    const boundPort = await new Promise((resolve) => {
-      server.listen(port, host, () => resolve(server.address().port));
+    const boundPort = await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(port, host, () => {
+        server.off('error', reject);
+        resolve(server.address().port);
+      });
     });
 
     activePort = boundPort;
@@ -1083,8 +1087,12 @@ async function start() {
     }
   });
 
-  const boundPort = await new Promise((resolve) => {
-    server.listen(port, host, () => resolve(server.address().port));
+  const boundPort = await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => {
+      server.off('error', reject);
+      resolve(server.address().port);
+    });
   });
 
   activePort = boundPort;

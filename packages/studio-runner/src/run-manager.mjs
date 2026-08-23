@@ -48,6 +48,7 @@ export class RunManager extends EventEmitter {
     rootDir,
     workspaceDir,
     runsDir,
+    scratchDir,
     compile,
     loadDocument,
     resolveCompileOptions,
@@ -60,12 +61,27 @@ export class RunManager extends EventEmitter {
     this.running = 0;
     this.rootDir = rootDir;
     this.workspaceDir = workspaceDir ?? rootDir;
+    // The generated config imports '@playwright/test' by bare specifier, and ESM
+    // resolves that from the config file's own location. It therefore has to sit
+    // next to a node_modules that contains it — which, in a packaged app, is the
+    // unpacked directory rather than the read-only archive.
+    this.scratchDir = scratchDir ?? path.join(this.resolveRunnable('.'), '.studio-runs');
     this.runsDir = runsDir;
     this.compile = compile;
     this.loadDocument = loadDocument;
     this.testImport = testImport;
     this.resolveCompileOptions = resolveCompileOptions;
     this.active = new Map();
+  }
+
+  // Inside a packaged app the code lives in an asar archive that a spawned
+  // process cannot read, but electron-builder also unpacks a copy alongside it.
+  resolveRunnable(relativePath) {
+    const base = this.rootDir.includes('app.asar')
+      ? this.rootDir.replace('app.asar', 'app.asar.unpacked')
+      : this.rootDir;
+
+    return path.join(base, relativePath);
   }
 
   runDirectory(runId) {
@@ -99,7 +115,7 @@ export class RunManager extends EventEmitter {
   }
 
   async sweepOrphanedConfigs() {
-    const configDir = path.join(this.rootDir, '.studio-runs');
+    const configDir = this.scratchDir;
     const entries = await fs.readdir(configDir).catch(() => []);
 
     await Promise.all(
@@ -291,7 +307,7 @@ export class RunManager extends EventEmitter {
 
     await this.writeManifest(manifest);
 
-    const configDir = path.join(this.rootDir, '.studio-runs');
+    const configDir = this.scratchDir;
     await fs.mkdir(configDir, { recursive: true });
     const configPath = path.join(configDir, `${runId}.config.mjs`);
     await fs.writeFile(
@@ -305,7 +321,7 @@ export class RunManager extends EventEmitter {
         '  workers: 1,',
         '  retries: 0,',
         `  reporter: [[${JSON.stringify(
-          path.join(this.rootDir, 'packages/studio-runner/src/reporter.mjs'),
+          this.resolveRunnable('packages/studio-runner/src/reporter.mjs'),
         )}]],`,
         '  use: {',
         '    trace: "on",',
@@ -363,7 +379,7 @@ export class RunManager extends EventEmitter {
     const child = spawn(
       process.execPath,
       [
-        path.join(this.rootDir, 'node_modules/@playwright/test/cli.js'),
+        this.resolveRunnable('node_modules/@playwright/test/cli.js'),
         'test',
         '--config',
         configPath,
@@ -375,7 +391,10 @@ export class RunManager extends EventEmitter {
         env: {
           ...process.env,
           FORCE_COLOR: '0',
-          NODE_PATH: path.join(this.rootDir, 'node_modules'),
+          NODE_PATH: this.resolveRunnable('node_modules'),
+          // Inside a packaged app process.execPath is the Electron binary, which
+          // relaunches the whole app unless it is told to behave as plain Node.
+          ELECTRON_RUN_AS_NODE: '1',
         },
       },
     );
@@ -466,7 +485,7 @@ export class RunManager extends EventEmitter {
     };
 
     await fs
-      .rm(path.join(this.rootDir, '.studio-runs', `${runId}.config.mjs`), { force: true })
+      .rm(path.join(this.scratchDir, `${runId}.config.mjs`), { force: true })
       .catch(() => undefined);
 
     await this.writeManifest(manifest);

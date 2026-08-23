@@ -12,7 +12,8 @@ let studioUrl = null;
 
 async function readSettings() {
   try {
-    return JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+    const parsed = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -22,16 +23,25 @@ async function writeSettings(patch) {
   const current = await readSettings();
   const next = { ...current, ...patch };
 
-  await fs.mkdir(path.dirname(settingsPath), { recursive: true });
-  await fs.writeFile(settingsPath, `${JSON.stringify(next, null, 2)}\n`);
+  try {
+    await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+    await fs.writeFile(settingsPath, `${JSON.stringify(next, null, 2)}\n`);
+  } catch (error) {
+    // Losing a preference is not worth taking the app down for.
+    console.warn('Could not save settings:', error.message);
+  }
 
   return next;
 }
 
 async function looksLikeWorkspace(directory) {
+  if (typeof directory !== 'string' || !path.isAbsolute(directory)) {
+    return false;
+  }
+
   try {
-    await fs.access(path.join(directory, 'playwright-lowcode'));
-    return true;
+    const stats = await fs.stat(path.join(directory, 'playwright-lowcode'));
+    return stats.isDirectory();
   } catch {
     return false;
   }
@@ -74,10 +84,15 @@ async function bootStudio(workspaceRoot) {
   process.env.STUDIO_WORKSPACE_ROOT = workspaceRoot;
   process.env.STUDIO_INSTALL_ROOT = installRoot;
   process.env.STUDIO_PROD = '1';
+
+  if (app.isPackaged) {
+    process.env.STUDIO_PACKAGED = '1';
+  }
   process.env.PORT = process.env.PORT || '0';
 
   const { startStudio } = await import(path.join(installRoot, 'server.mjs'));
-  const { url } = await startStudio();
+  const { url, server } = await startStudio();
+  studioServer = server;
 
   return url;
 }
@@ -96,6 +111,24 @@ function trackWindowBounds(window) {
 
   window.on('resize', persist);
   window.on('move', persist);
+}
+
+function safeProtocol(candidate) {
+  try {
+    return new URL(candidate).protocol;
+  } catch {
+    return '';
+  }
+}
+
+// Compare parsed origins: a startsWith check would let http://127.0.0.1:51730
+// pass for a Studio running on port 5173.
+function isStudioOrigin(candidate) {
+  try {
+    return new URL(candidate).origin === new URL(studioUrl).origin;
+  } catch {
+    return false;
+  }
 }
 
 async function createWindow() {
@@ -119,7 +152,7 @@ async function createWindow() {
   trackWindowBounds(mainWindow);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http://') || url.startsWith('https://')) {
+    if (/^https?:$/.test(safeProtocol(url))) {
       void shell.openExternal(url);
     }
 
@@ -128,10 +161,13 @@ async function createWindow() {
 
   // The renderer only ever loads the local Studio; anything else is a bug or an
   // attempt to navigate away, and is refused.
-  mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (studioUrl && !url.startsWith(new URL(studioUrl).origin)) {
+  mainWindow.webContents.on('will-navigate', (event, target) => {
+    if (!studioUrl || !isStudioOrigin(target)) {
       event.preventDefault();
-      void shell.openExternal(url);
+
+      if (/^https?:$/.test(safeProtocol(target))) {
+        void shell.openExternal(target);
+      }
     }
   });
 
@@ -291,7 +327,40 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+let studioServer = null;
+
+async function shutdown() {
+  await new Promise((resolve) => {
+    if (!studioServer) {
+      resolve();
+      return;
+    }
+
+    studioServer.close(() => resolve());
+    setTimeout(resolve, 2000).unref?.();
+  });
+}
+
 async function main() {
+  if (!app.requestSingleInstanceLock()) {
+    app.quit();
+    return;
+  }
+
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+
+      mainWindow.focus();
+    }
+  });
+
+  app.on('before-quit', () => {
+    void shutdown();
+  });
+
   await app.whenReady();
 
   ipcMain.handle('studio:workspace-root', () => process.env.STUDIO_WORKSPACE_ROOT ?? null);
@@ -324,7 +393,7 @@ async function main() {
   buildMenu();
   await createWindow();
 
-  if (process.env.STUDIO_SELFTEST === '1') {
+  if (process.env.STUDIO_SELFTEST === '1' && !app.isPackaged) {
     const report = await mainWindow.webContents.executeJavaScript(
       `(async () => {
          const deadline = Date.now() + 15000;
