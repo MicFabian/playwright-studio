@@ -999,6 +999,32 @@ class Compiler {
     }
 
     if (wrapped) {
+      // The studio profile records what the page looked like after the step so
+      // the run panel can show it. A failing screenshot must never fail a run
+      // that otherwise passed, so it is swallowed.
+      if (this.profile === 'studio-run') {
+        this.emitter.push('try {');
+        this.emitter.indent();
+        // Written to a path rather than attached as a body: an in-memory
+        // attachment never reaches disk, so there would be nothing to serve.
+        this.emitter.push(
+          `const __shot = test.info().outputPath(${quote(`studio-step-${step.id}.png`)});`,
+        );
+        this.emitter.push('await page.screenshot({ path: __shot });');
+        this.emitter.push(`await test.info().attach(${quote(`studio-step:${step.id}`)}, {`);
+        this.emitter.indent();
+        this.emitter.push('path: __shot,');
+        this.emitter.push("contentType: 'image/png',");
+        this.emitter.dedent();
+        this.emitter.push('});');
+        this.emitter.dedent();
+        this.emitter.push('} catch {');
+        this.emitter.indent();
+        this.emitter.push('// The page may already be closed; the run still stands.');
+        this.emitter.dedent();
+        this.emitter.push('}');
+      }
+
       this.emitter.dedent();
       this.emitter.push('});');
     }

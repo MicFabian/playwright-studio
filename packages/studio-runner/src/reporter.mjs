@@ -53,6 +53,19 @@ export default class StudioReporter {
   }
 
   onTestEnd(test, result) {
+    // Playwright exposes attachments on the test result, never on the step, so
+    // the per-step screenshots are matched back by the name they were given.
+    (result.attachments ?? [])
+      .filter((attachment) => attachment.path && attachment.name.startsWith('studio-step:'))
+      .forEach((attachment) =>
+        write({
+          type: 'step:screenshot',
+          stepId: attachment.name.slice('studio-step:'.length),
+          path: attachment.path,
+          at: Date.now(),
+        }),
+      );
+
     write({
       type: 'test:finished',
       title: test.title,

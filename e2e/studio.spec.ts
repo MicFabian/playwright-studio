@@ -183,6 +183,27 @@ test('importing a spec previews fidelity before adopting', async ({ page }) => {
   await expect(page.locator('.import-card__diagnostics')).toContainText('page.evaluate');
 });
 
+test('a run shows what the page looked like after each step', async ({ page }) => {
+  await page.locator('.explorer__list button', { hasText: 'Login path' }).click();
+  await page.locator('.topbar').getByRole('button', { name: 'Run', exact: true }).click();
+
+  await expect(page.locator('.run__head')).toContainText('Passed', { timeout: 90_000 });
+  await expect(page.locator('.run__shot').first()).toBeVisible();
+
+  const loaded = await page
+    .locator('.run__shot img')
+    .first()
+    .evaluate((image: HTMLImageElement) => image.naturalWidth > 0);
+
+  expect(loaded).toBe(true);
+
+  await page.locator('.run__shot').first().click();
+  await expect(page.locator('.run__lightbox img')).toBeVisible();
+
+  await page.locator('.run__lightbox').click();
+  await expect(page.locator('.run__lightbox')).toHaveCount(0);
+});
+
 test('running a flow reports per-step results from the real runner', async ({ page }) => {
   await page.locator('.explorer__list button', { hasText: 'Login path' }).click();
   await page.locator('.topbar').getByRole('button', { name: 'Run', exact: true }).click();

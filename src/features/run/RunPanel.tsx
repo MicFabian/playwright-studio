@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { blockRegistry } from '../../lib/flowCore';
 import { artifactUrl } from '../../lib/workspaceClient';
 import { useEditorStore } from '../../stores/editorStore';
@@ -15,6 +16,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function RunPanel() {
+  const [preview, setPreview] = useState<string | null>(null);
   const run = useRunStore((state) => state.run);
   const stepStatus = useRunStore((state) => state.stepStatus);
   const starting = useRunStore((state) => state.starting);
@@ -95,10 +97,37 @@ export function RunPanel() {
                 ) : null}
               </button>
               {step.error ? <p className="run__step-error">{step.error}</p> : null}
+              {step.screenshot ? (
+                <button
+                  type="button"
+                  className="run__shot"
+                  aria-label={`Screenshot after ${labelFor(step.stepId)}`}
+                  onClick={() => setPreview(step.stepId)}
+                >
+                  <img src={artifactUrl(run.id, step.screenshot)} alt="" loading="lazy" />
+                </button>
+              ) : null}
             </li>
           );
         })}
       </ol>
+
+      {preview && run.steps.find((step) => step.stepId === preview)?.screenshot ? (
+        <div
+          className="run__lightbox"
+          role="dialog"
+          aria-label={`Screenshot after ${labelFor(preview)}`}
+          onClick={() => setPreview(null)}
+        >
+          <img
+            src={artifactUrl(
+              run.id,
+              run.steps.find((step) => step.stepId === preview)!.screenshot!,
+            )}
+            alt={`The page after ${labelFor(preview)}`}
+          />
+        </div>
+      ) : null}
 
       {run.artifacts && run.artifacts.length > 0 ? (
         <footer className="run__artifacts">

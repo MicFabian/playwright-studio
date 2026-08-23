@@ -93,6 +93,8 @@ export interface TestRunStep {
   status: TestRunStepStatus;
   durationMs: number | null;
   error: string | null;
+  /** Relative to the run's artifacts directory, when the step captured one. */
+  screenshot?: string | null;
 }
 
 export interface RunArtifact {

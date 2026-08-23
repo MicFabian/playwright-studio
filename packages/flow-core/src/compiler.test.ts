@@ -628,13 +628,19 @@ describe('profiles', () => {
     const commit = compileFlow(doc(steps), { profile: 'commit' });
     const run = compileFlow(doc(steps), { profile: 'studio-run' });
 
+    // Studio's own instrumentation is excluded: the point of the check is that
+    // the statements belonging to the flow are identical in both profiles.
+    const instrumentation = /__shot|test\.info\(\)\.attach\(/;
+
     const meaningful = (source: string) =>
       source
         .split('\n')
         .map((line) => line.trim())
-        .filter((line) => line.startsWith('await page.') || line.startsWith('await expect('));
+        .filter((line) => line.startsWith('await page.') || line.startsWith('await expect('))
+        .filter((line) => !instrumentation.test(line));
 
     expect(meaningful(run.source)).toEqual(meaningful(commit.source));
+    expect(meaningful(run.source).length).toBeGreaterThan(0);
   });
 
   it('studio-run tags step titles with ids so the reporter can map them back', () => {
@@ -644,6 +650,25 @@ describe('profiles', () => {
     expect(run.source).toContain('test.step("[a] Open page"');
     expect(commit.source).toContain('test.step("Open page"');
     expect(commit.source).not.toContain('[a]');
+  });
+
+  it('captures a screenshot after each step, but only when running in Studio', () => {
+    const run = compileFlow(doc(steps), { profile: 'studio-run' });
+    const commit = compileFlow(doc(steps), { profile: 'commit' });
+
+    expect(run.source).toContain('await page.screenshot({ path: __shot });');
+    expect(run.source).toContain('test.info().attach("studio-step:a"');
+    expect(commit.source).not.toContain('screenshot');
+  });
+
+  it('does not let a failed screenshot fail the run', () => {
+    const { source } = compileFlow(doc(steps), { profile: 'studio-run' });
+
+    // The capture sits in its own try so a closed page cannot fail a passing run.
+    const capture = source.slice(source.indexOf('const __shot'));
+
+    expect(source).toContain('try {');
+    expect(capture).toContain('} catch {');
   });
 
   it('respects a workspace fixture import', () => {

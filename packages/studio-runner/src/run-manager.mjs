@@ -290,6 +290,7 @@ export class RunManager extends EventEmitter {
       status: 'queued',
       durationMs: null,
       error: null,
+      screenshot: null,
     }));
 
     const manifest = {
@@ -453,6 +454,21 @@ export class RunManager extends EventEmitter {
             ...manifest,
             steps: manifest.steps.map((step) =>
               step.stepId === event.stepId ? { ...step, status: 'running' } : step,
+            ),
+          };
+        }
+
+        if (event.type === 'step:screenshot' && event.stepId && event.path) {
+          // Stored relative to the artifacts directory so the existing artifact
+          // endpoint can serve it without another route.
+          const relative = path
+            .relative(path.join(this.runDirectory(runId), 'artifacts'), event.path)
+            .replaceAll('\\', '/');
+
+          manifest = {
+            ...manifest,
+            steps: manifest.steps.map((step) =>
+              step.stepId === event.stepId ? { ...step, screenshot: relative } : step,
             ),
           };
         }

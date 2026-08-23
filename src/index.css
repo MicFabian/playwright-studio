@@ -1464,3 +1464,45 @@ button.danger {
   flex-direction: column;
   gap: var(--step-1);
 }
+
+.run__shot {
+  display: block;
+  width: 100%;
+  margin: var(--step-1) 0 var(--step-2) var(--step-4);
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  line-height: 0;
+}
+
+.run__shot:hover {
+  border-color: var(--accent);
+}
+
+.run__shot img {
+  width: 100%;
+  height: auto;
+  max-height: 120px;
+  object-fit: cover;
+  object-position: top;
+}
+
+.run__lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: color-mix(in srgb, #000 72%, transparent);
+  display: grid;
+  place-items: center;
+  padding: var(--step-5);
+  cursor: zoom-out;
+}
+
+.run__lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
