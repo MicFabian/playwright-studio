@@ -117,6 +117,23 @@ The compiler inlines the body inside a block scope, so snippet locals cannot
 leak into the flow, and reports a missing snippet, a missing required argument,
 or an output the snippet does not declare.
 
+## Recording
+
+Press Record and Studio opens a browser through Playwright's own recorder.
+Whatever you do lands in the panel as blocks, and Stop moves to review, where
+you can drop an action before anything is added. Accepting inserts the whole
+recording as one change, so a single undo takes it back out.
+
+Locators come from Playwright's recorder rather than from Studio, so they follow
+its order of preference — role, label, test id — and honour the
+`testIdAttribute` in your config. Anything the recorder produced that Studio
+cannot express as a block is kept as custom code and flagged, since that code
+will run.
+
+A recording is exclusive: starting a second one is refused while one is
+running, and quitting mid-recording discards it rather than leaving a
+half-applied change behind.
+
 ## Importing existing specs
 
 Studio parses real TypeScript rather than matching patterns. It reads the action
@@ -188,6 +205,9 @@ config discovery, and the local security model.
 Runs as a desktop app with native menus, and every push runs formatting, lint,
 build, unit tests, browser tests, and a check that the committed generated specs
 still pass. A version tag builds installers for macOS, Windows, and Linux.
+
+Runs capture a screenshot after every step, shown beside the step in the run
+panel, alongside the trace and the video.
 
 Not built yet: reading data rows from an external CSV or JSON file rather than
 the in-app table, running a flow against a chosen Playwright project from the
